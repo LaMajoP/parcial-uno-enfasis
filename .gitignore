@@ -24,6 +24,3 @@ dist/
 .idea/
 .vscode/
 *.swp
-
-# Base de datos local
-database/
