@@ -1,0 +1,5 @@
+# Solo para el target `local` del Dockerfile. La imagen de Lambda no los instala.
+-r requirements.txt
+pytest==8.3.4
+pytest-asyncio==0.25.0
+pytest-timeout==2.3.1
