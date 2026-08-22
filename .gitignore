@@ -25,8 +25,5 @@ dist/
 .vscode/
 *.swp
 
-# Claude
-CLAUDE.md
-
 # Base de datos local
 database/
