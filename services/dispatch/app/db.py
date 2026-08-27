@@ -20,8 +20,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from .config import get_settings
 from .schemas.enums import AssignmentStatus, City, ResourceStatus, ResourceType
+from .secrets import get_database_url
 
 metadata = MetaData(schema="dispatch")
 
@@ -65,10 +65,8 @@ assignments = Table(
     Column("completed_at", DateTime(timezone=True), nullable=True),
 )
 
-_settings = get_settings()
-
 engine = create_async_engine(
-    _settings.database_url,
+    get_database_url(),
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=5,

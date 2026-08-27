@@ -27,3 +27,4 @@ dist/
 
 # Claude
 CLAUDE.md
+.env.example

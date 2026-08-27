@@ -1,0 +1,391 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: Emergency Platform production infrastructure
+
+Parameters:
+
+  IntakeImageUri:
+    Type: String
+
+  DispatchImageUri:
+    Type: String
+
+  GeospatialImageUri:
+    Type: String
+
+  NotificationImageUri:
+    Type: String
+
+  AllowedOrigin:
+    Type: String
+    Description: Production Vercel frontend origin
+    # falta poner la url de vercel en produccion, por ahora es la de desarrollo
+
+  EnableCanary:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Enable gradual Canary deployments
+
+Conditions:
+
+  CanaryEnabled:
+    !Equals [!Ref EnableCanary, "true"]
+
+Globals:
+
+  Function:
+    Timeout: 15
+    MemorySize: 512
+    Architectures:
+      - x86_64
+    Tracing: Active
+    Environment:
+      Variables:
+        DATABASE_URL_PARAMETER: /emergency-platform/prod/database-url
+
+Resources:
+
+  IntakeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Environment:
+        Variables:
+          SERVICE_TRANSPORT: lambda #cambiar en el futuro
+          DISPATCH_FUNCTION_NAME: emergency-dispatch-prod:prod
+          NOTIFICATION_FUNCTION_NAME: emergency-notification-prod:prod
+
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: InvokeInternalServices
+              Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:emergency-dispatch-prod:prod"
+                - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:emergency-notification-prod:prod"
+            - Sid: ReadDatabaseParameter
+              Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/database-url"
+
+      Events:
+        CreateEmergency:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/emergencies
+            Method: POST
+
+        GetEmergency:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/emergencies/{emergency_id}
+            Method: GET
+
+        UpdateEmergency:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/emergencies/{emergency_id}/status
+            Method: PATCH
+
+      FunctionName: emergency-intake-prod
+      PackageType: Image
+      ImageUri: !Ref IntakeImageUri
+      AutoPublishAlias: prod
+      DeploymentPreference:
+        Enabled: !If [CanaryEnabled, true, false]
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref IntakeErrorsAlarm
+          - !Ref Api5xxAlarm
+          - !Ref ApiLatencyAlarm
+
+  DispatchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Environment:
+        Variables:
+          SERVICE_TRANSPORT: lambda
+          INTAKE_FUNCTION_NAME: emergency-intake-prod:prod
+          NOTIFICATION_FUNCTION_NAME: emergency-notification-prod:prod
+
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: InvokeInternalServices
+              Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:emergency-intake-prod:prod"
+                - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:emergency-notification-prod:prod"
+            - Sid: ReadDatabaseParameter
+              Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/database-url"
+
+      Events:
+        CreateDispatch:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/dispatches
+            Method: POST
+
+        ListDispatches:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/dispatches
+            Method: GET
+
+        UpdateDispatch:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/dispatches/{dispatch_id}
+            Method: PATCH
+
+        ListResources:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/resources
+            Method: GET
+
+        NearbyResources:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/resources/nearby
+            Method: GET
+
+      FunctionName: emergency-dispatch-prod
+      PackageType: Image
+      ImageUri: !Ref DispatchImageUri
+      AutoPublishAlias: prod
+      DeploymentPreference:
+        Enabled: !If [CanaryEnabled, true, false]
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref DispatchErrorsAlarm
+          - !Ref Api5xxAlarm
+          - !Ref ApiLatencyAlarm
+
+  GeospatialFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: ReadDatabaseParameter
+              Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/database-url"
+
+      Events:
+        ZoneEmergencies:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/zones/{city}/emergencies
+            Method: GET
+
+        ZoneHotspots:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/zones/{city}/hotspots
+            Method: GET
+
+      FunctionName: emergency-geospatial-prod
+      PackageType: Image
+      ImageUri: !Ref GeospatialImageUri
+      AutoPublishAlias: prod
+      DeploymentPreference:
+        Enabled: !If [CanaryEnabled, true, false]
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref GeospatialErrorsAlarm
+          - !Ref Api5xxAlarm
+          - !Ref ApiLatencyAlarm
+
+  NotificationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: ReadDatabaseParameter
+              Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/database-url"
+
+      Events:
+        CreateNotification:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/notifications
+            Method: POST
+
+        ListNotifications:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmergencyApi
+            Path: /v1/notifications
+            Method: GET
+
+      FunctionName: emergency-notification-prod
+      PackageType: Image
+      ImageUri: !Ref NotificationImageUri
+      AutoPublishAlias: prod
+      DeploymentPreference:
+        Enabled: !If [CanaryEnabled, true, false]
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref NotificationErrorsAlarm
+          - !Ref Api5xxAlarm
+          - !Ref ApiLatencyAlarm
+      Architectures:
+
+  Api5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: emergency-api-5xx-prod
+      AlarmDescription: Alarm when API Gateway returns HTTP 5xx errors
+      Namespace: AWS/ApiGateway
+      MetricName: 5XXError
+      Dimensions:
+        - Name: ApiName
+          Value: emergency-platform-api
+        - Name: Stage
+          Value: prod
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ApiLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: emergency-api-latency-prod
+      AlarmDescription: Alarm when average API latency exceeds 1500 ms
+      Namespace: AWS/ApiGateway
+      MetricName: Latency
+      Dimensions:
+        - Name: ApiName
+          Value: emergency-platform-api
+        - Name: Stage
+          Value: prod
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1500
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  EmergencyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: emergency-platform-api
+      StageName: prod
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+      Cors:
+        AllowMethods: "'GET,POST,PATCH,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Request-Id'"
+        AllowOrigin: !Sub "'${AllowedOrigin}'"
+        
+  IntakeErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: emergency-intake-errors-prod
+      AlarmDescription: Alarm when Intake Lambda produces errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: emergency-intake-prod
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  DispatchErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: emergency-dispatch-errors-prod
+      AlarmDescription: Alarm when Dispatch Lambda produces errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: emergency-dispatch-prod
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching  
+              
+  GeospatialErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: emergency-geospatial-errors-prod
+      AlarmDescription: Alarm when Geospatial Lambda produces errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: emergency-geospatial-prod
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      
+  NotificationErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: emergency-notification-errors-prod
+      AlarmDescription: Alarm when Notification Lambda produces errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: emergency-notification-prod
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching    
+
+  
+
+Outputs:
+
+  ApiUrl:
+    Description: Production API Gateway URL
+    Value: !Sub "https://${EmergencyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"

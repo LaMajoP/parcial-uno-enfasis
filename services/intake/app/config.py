@@ -4,6 +4,7 @@ En AWS estas variables vendrán de Secrets Manager en vez del archivo .env, por 
 no hay ningún valor de configuración embebido en el código.
 """
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,11 +15,16 @@ class Settings(BaseSettings):
     service_name: str = "intake"
     log_level: str = "INFO"
 
-    database_url: str = "postgresql+asyncpg://emergency:emergency@postgres:5432/emergency"
+    service_transport: Literal["http", "lambda"] = "http"
 
-    # Servicios a los que llama Intake. Ambas llamadas son fire-and-forget.
-    notification_url: str = "http://notification:8000"
-    dispatch_url: str = "http://dispatch:8000"
+    # Desarrollo local
+    notification_url: str | None = None
+    dispatch_url: str | None = None
+
+    # Producción AWS
+    notification_function_name: str | None = None
+    dispatch_function_name: str | None = None
+
     http_timeout_seconds: float = 3.0
 
 

@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Bootstrap infrastructure for Emergency Platform.
+  Creates the four private ECR repositories used by Lambda container images.
+
+Resources:
+
+  IntakeRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: emergencias/intake
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+
+  DispatchRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: emergencias/dispatch
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+
+  GeospatialRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: emergencias/geo
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+
+  NotificationRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: emergencias/notification
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+
+Outputs:
+
+  IntakeRepositoryUri:
+    Value: !GetAtt IntakeRepository.RepositoryUri
+
+  DispatchRepositoryUri:
+    Value: !GetAtt DispatchRepository.RepositoryUri
+
+  GeospatialRepositoryUri:
+    Value: !GetAtt GeospatialRepository.RepositoryUri
+
+  NotificationRepositoryUri:
+    Value: !GetAtt NotificationRepository.RepositoryUri

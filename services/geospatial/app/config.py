@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     service_name: str = "geospatial"
     log_level: str = "INFO"
 
-    database_url: str = "postgresql+asyncpg://emergency:emergency@postgres:5432/emergency"
 
     http_timeout_seconds: float = 3.0
 

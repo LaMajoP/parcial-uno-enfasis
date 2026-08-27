@@ -17,7 +17,7 @@ import httpx
 
 from ..config import get_settings
 from ..log import request_id_var
-from .base import post_fire_and_forget
+from .base import invoke_lambda_http, post_fire_and_forget
 from ..schemas.enums import EmergencyStatus
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,33 @@ def _headers() -> dict[str, str]:
 async def fetch_emergency(emergency_id: UUID) -> dict[str, Any] | None:
     """Devuelve los datos de la emergencia, o None si no se pudo obtener."""
     settings = get_settings()
+
+    if settings.service_transport == "lambda":
+        if not settings.intake_function_name:
+            logger.error("INTAKE_FUNCTION_NAME is not configured")
+            return None
+
+        result = await invoke_lambda_http(
+            settings.intake_function_name,
+            "GET",
+            f"/v1/emergencies/{emergency_id}",
+            purpose="fetch_emergency",
+        )
+
+        if result is None:
+            return None
+
+        status_code, body, _ = result
+
+        if not 200 <= status_code < 300 or not isinstance(body, dict):
+            return None
+
+        return body.get("data")
+
+    if not settings.intake_url:
+        logger.error("INTAKE_URL is not configured")
+        return None
+
     url = f"{settings.intake_url}/v1/emergencies/{emergency_id}"
     try:
         async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
@@ -49,6 +76,26 @@ async def fetch_emergency(emergency_id: UUID) -> dict[str, Any] | None:
 async def mark_status(emergency_id: UUID, status: EmergencyStatus) -> bool:
     """PATCH del estado de la emergencia. Best-effort, como el resto."""
     settings = get_settings()
+
+    if settings.service_transport == "lambda":
+        if not settings.intake_function_name:
+            logger.error("INTAKE_FUNCTION_NAME is not configured")
+            return False
+
+        result = await invoke_lambda_http(
+            settings.intake_function_name,
+            "PATCH",
+            f"/v1/emergencies/{emergency_id}/status",
+            payload={"status": status.value},
+            purpose="mark_emergency_status",
+        )
+
+        return result is not None and 200 <= result[0] < 300
+
+    if not settings.intake_url:
+        logger.error("INTAKE_URL is not configured")
+        return False
+
     url = f"{settings.intake_url}/v1/emergencies/{emergency_id}/status"
     try:
         async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:

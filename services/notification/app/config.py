@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     service_name: str = "notification"
     log_level: str = "INFO"
 
-    database_url: str = "postgresql+asyncpg://emergency:emergency@postgres:5432/emergency"
 
     # Notification no llama a nadie: solo registra y difunde.
     http_timeout_seconds: float = 3.0

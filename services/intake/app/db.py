@@ -20,8 +20,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from .config import get_settings
 from .schemas.enums import City, EmergencyStatus, EmergencyType, Priority
+from .secrets import get_database_url
 
 metadata = MetaData(schema="intake")
 
@@ -56,10 +56,8 @@ emergencies = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
-_settings = get_settings()
-
 engine = create_async_engine(
-    _settings.database_url,
+    get_database_url(),
     # `pool_pre_ping` evita servir una conexión que el servidor ya cerró, algo
     # habitual cuando el contenedor lleva rato ocioso.
     pool_pre_ping=True,
