@@ -20,6 +20,12 @@ import {
   STATUS_LABELS,
   elapsedSince,
 } from '../lib/constants'
+import {
+  EMERGENCIES_TABLE,
+  NOTIFICATIONS_TABLE,
+  useRealtime,
+} from '../lib/realtime'
+import type { RealtimeStatus } from '../lib/realtime'
 import type {
   City,
   Dispatch,
@@ -37,10 +43,6 @@ const STATUSES: EmergencyStatus[] = [
   'IN_PROGRESS',
 ]
 
-// Fase local: sondeo cada 5 s (§9). En la fase Supabase esto se sustituye por
-// una suscripción Realtime que invalida las queries al recibir un cambio.
-const REFETCH_MS = 5000
-
 export function OperatorDashboard() {
   const queryClient = useQueryClient()
   const [city, setCity] = useState<City>('CALI')
@@ -55,25 +57,21 @@ export function OperatorDashboard() {
         priority: priority || undefined,
         status: status || undefined,
       }),
-    refetchInterval: REFETCH_MS,
   })
 
   const hotspots = useQuery({
     queryKey: ['hotspots', city],
     queryFn: () => getHotspots(city),
-    refetchInterval: REFETCH_MS,
   })
 
   const resources = useQuery({
     queryKey: ['resources', city],
     queryFn: () => getResources(city),
-    refetchInterval: REFETCH_MS,
   })
 
   const dispatches = useQuery({
     queryKey: ['dispatches'],
     queryFn: getDispatches,
-    refetchInterval: REFETCH_MS,
   })
 
   /** Despacho vivo de cada emergencia, para la columna "recurso asignado". */
@@ -93,6 +91,15 @@ export function OperatorDashboard() {
     queryClient.invalidateQueries({ queryKey: ['resources'] })
     queryClient.invalidateQueries({ queryKey: ['hotspots'] })
   }
+
+  // Sustituye al sondeo de 5 s (§8.3). Se escuchan las dos tablas publicadas:
+  // `emergencies` cubre altas y cambios de estado; `notifications` cubre los
+  // avisos que genera Dispatch al asignar un recurso, que es lo que hace que la
+  // columna "recurso asignado" se actualice sin que el operador toque nada.
+  const realtimeStatus = useRealtime(
+    [EMERGENCIES_TABLE, NOTIFICATIONS_TABLE],
+    refreshAll,
+  )
 
   const assign = useMutation({
     mutationFn: ({
@@ -118,9 +125,9 @@ export function OperatorDashboard() {
           <h1 className="text-2xl font-semibold text-slate-900">
             Panel del operador
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Emergencias activas en {CITY_LABELS[city]}. Se actualiza cada 5
-            segundos.
+          <p className="mt-1 flex items-center gap-2 text-sm text-slate-600">
+            <span>Emergencias activas en {CITY_LABELS[city]}.</span>
+            <RealtimeIndicator status={realtimeStatus} />
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -402,5 +409,31 @@ function AssignPanel({
         )}
       </div>
     </section>
+  )
+}
+
+/**
+ * Estado de la conexión Realtime, visible en pantalla.
+ *
+ * Con el sondeo, que la actualización dejara de funcionar era invisible: la
+ * pantalla simplemente se quedaba quieta y parecía que no pasaba nada. Con un
+ * websocket es peor, porque puede caerse en silencio. Mostrar el estado permite
+ * distinguir "no hay emergencias nuevas" de "dejé de enterarme".
+ */
+function RealtimeIndicator({ status }: { status: RealtimeStatus }) {
+  const config = {
+    connecting: { color: 'bg-amber-400', label: 'Conectando…' },
+    connected: { color: 'bg-emerald-500', label: 'En vivo' },
+    error: { color: 'bg-red-500', label: 'Sin conexión en vivo' },
+  }[status]
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+      <span
+        className={`h-2 w-2 rounded-full ${config.color}`}
+        aria-hidden
+      />
+      {config.label}
+    </span>
   )
 }

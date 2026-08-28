@@ -1,10 +1,11 @@
 /** Seguimiento de una emergencia por el ciudadano (§9, ruta `/track/:id`). */
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { PriorityBadge, StatusBadge } from '../components/Badges'
 import { ErrorBox, Loading } from '../components/QueryState'
 import { getEmergency } from '../lib/api'
 import { CITY_LABELS, EMERGENCY_TYPE_LABELS, elapsedSince } from '../lib/constants'
+import { useRealtime } from '../lib/realtime'
 import type { EmergencyStatus } from '../lib/types'
 
 const STEPS: EmergencyStatus[] = [
@@ -17,13 +18,24 @@ const STEPS: EmergencyStatus[] = [
 
 export function TrackEmergency() {
   const { id = '' } = useParams()
+  const queryClient = useQueryClient()
 
   const query = useQuery({
     queryKey: ['emergency', id],
     queryFn: () => getEmergency(id),
-    // El ciudadano deja esta pantalla abierta esperando novedades.
-    refetchInterval: 5000,
   })
+
+  // El ciudadano deja esta pantalla abierta esperando novedades. Se filtra por
+  // `id` del lado servidor: sin el filtro, el navegador recibiría un evento por
+  // CADA emergencia de la ciudad y volvería a pedir esta una y otra vez sin que
+  // hubiera cambiado nada.
+  //
+  // El filtro es una optimización, no una medida de seguridad: quien decide qué
+  // filas puede ver este usuario es la política RLS de intake.emergencies.
+  useRealtime(
+    [{ schema: 'intake', table: 'emergencies', filter: `id=eq.${id}` }],
+    () => queryClient.invalidateQueries({ queryKey: ['emergency', id] }),
+  )
 
   if (query.isPending) return <div className="p-6"><Loading /></div>
   if (query.isError) {
