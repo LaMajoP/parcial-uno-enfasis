@@ -19,6 +19,7 @@ import httpx
 
 from ..config import get_settings
 from ..log import request_id_var
+from .circuit_breaker import get_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,14 @@ logger = logging.getLogger(__name__)
 async def post_fire_and_forget(url: str, payload: dict, *, purpose: str) -> bool:
     """Hace un POST y se traga cualquier fallo. Devuelve si tuvo éxito."""
     settings = get_settings()
+    circuit = get_circuit_breaker(purpose)
+    if not circuit.allow_request():
+        logger.warning(
+            "Outbound call skipped because circuit is open",
+            extra={"purpose": purpose, "circuit_state": circuit.state.value},
+        )
+        return False
+
     headers = {}
     if request_id := request_id_var.get():
         headers["X-Request-Id"] = request_id
@@ -35,6 +44,11 @@ async def post_fire_and_forget(url: str, payload: dict, *, purpose: str) -> bool
             response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
+        if exc.response.status_code >= 500:
+            circuit.record_failure()
+        else:
+            # Un 4xx indica que el servicio respondió; no es una caída de dependencia.
+            circuit.record_success()
         logger.warning(
             "Outbound call rejected",
             extra={
@@ -46,6 +60,7 @@ async def post_fire_and_forget(url: str, payload: dict, *, purpose: str) -> bool
         )
         return False
     except (httpx.HTTPError, OSError) as exc:
+        circuit.record_failure()
         # Servicio caído, DNS que no resuelve o timeout: se registra y se sigue.
         logger.warning(
             "Outbound call failed",
@@ -53,6 +68,7 @@ async def post_fire_and_forget(url: str, payload: dict, *, purpose: str) -> bool
         )
         return False
 
+    circuit.record_success()
     logger.info("Outbound call ok", extra={"purpose": purpose, "url": url})
     return True
 
@@ -118,6 +134,14 @@ async def invoke_lambda_http(
 ) -> tuple[int, Any, str] | None:
     """Invoca otra Lambda privadamente y conserva el contrato HTTP/FastAPI."""
 
+    circuit = get_circuit_breaker(purpose)
+    if not circuit.allow_request():
+        logger.warning(
+            "Internal Lambda invocation skipped because circuit is open",
+            extra={"purpose": purpose, "circuit_state": circuit.state.value},
+        )
+        return None
+
     event = _build_lambda_http_event(method, path, payload)
 
     def _invoke():
@@ -131,6 +155,7 @@ async def invoke_lambda_http(
         response = await asyncio.to_thread(_invoke)
 
         if response.get("FunctionError"):
+            circuit.record_failure()
             logger.warning(
                 "Internal Lambda execution failed",
                 extra={
@@ -151,9 +176,15 @@ async def invoke_lambda_http(
         except json.JSONDecodeError:
             body = None
 
+        if status_code >= 500:
+            circuit.record_failure()
+        else:
+            circuit.record_success()
+
         return status_code, body, body_text
 
     except Exception as exc:
+        circuit.record_failure()
         logger.warning(
             "Internal Lambda invocation failed",
             extra={

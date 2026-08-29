@@ -1,0 +1,101 @@
+name: Backend CI/CD
+
+on:
+  pull_request:
+    paths:
+      - "services/**"
+      - "infrastructure/**"
+      - ".github/workflows/backend-cd.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/**"
+      - "infrastructure/**"
+      - ".github/workflows/backend-cd.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-west-2
+  STACK_NAME: emergency-platform-prod
+
+jobs:
+  verify:
+    name: Test and validate infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test and SAM tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install aws-sam-cli
+      - name: Validate SAM without CodeDeploy
+        run: |
+          sam validate --template-file infrastructure/template.yaml --lint
+          ! rg -n 'CodeDeploy|DeploymentPreference|Canary|EnableCanary' infrastructure/template.yaml
+      - name: Run service tests
+        run: |
+          docker compose build
+          make test
+
+  deploy:
+    name: Build images and deploy backend
+    needs: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Provision immutable ECR repositories
+        run: |
+          aws cloudformation deploy \
+            --template-file infrastructure/bootstrap.yaml \
+            --stack-name emergency-platform-bootstrap \
+            --region "$AWS_REGION" \
+            --no-fail-on-empty-changeset
+      - name: Authenticate Docker with ECR
+        run: |
+          AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_ENV"
+          aws ecr get-login-password --region "$AWS_REGION" | \
+            docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      - name: Build and push Lambda OCI images
+        run: |
+          for service in intake dispatch geospatial notification; do
+            repository="emergencias/${service}"
+            if [ "$service" = "geospatial" ]; then repository="emergencias/geo"; fi
+            image="${ECR_REGISTRY}/${repository}:${GITHUB_SHA}"
+            docker build \
+              --platform linux/amd64 \
+              --provenance=false \
+              --target lambda \
+              -t "$image" "services/${service}"
+            docker push "$image"
+            upper="$(echo "$service" | tr '[:lower:]' '[:upper:]')"
+            echo "${upper}_IMAGE=${image}" >> "$GITHUB_ENV"
+          done
+      - name: Deploy production stack without CodeDeploy
+        run: |
+          aws cloudformation deploy \
+            --template-file infrastructure/template.yaml \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              IntakeImageUri="$INTAKE_IMAGE" \
+              DispatchImageUri="$DISPATCH_IMAGE" \
+              GeospatialImageUri="$GEOSPATIAL_IMAGE" \
+              NotificationImageUri="$NOTIFICATION_IMAGE" \
+              AllowedOrigin="${{ vars.VERCEL_ORIGIN }}" \
+              DatabaseSecretArn="${{ secrets.DATABASE_SECRET_ARN }}" \
+              BudgetAlertEmail="${{ secrets.BUDGET_ALERT_EMAIL }}"

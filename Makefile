@@ -1,14 +1,11 @@
-.PHONY: help up down logs ps test e2e seed migrate reset psql env
+.PHONY: help up down logs ps test e2e seed migrate reset psql
 
 COMPOSE := docker compose
 
 help: ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
-env: ## Crea .env desde .env.example si no existe
-	@test -f .env || (cp .env.example .env && echo "Creado .env desde .env.example")
-
-up: env ## Levanta toda la plataforma (migraciones y seeds incluidos)
+up: ## Levanta toda la plataforma (migraciones y seeds incluidos)
 	$(COMPOSE) up --build -d
 	@echo "Esperando a que terminen las migraciones…"
 	@$(COMPOSE) wait migrate >/dev/null 2>&1 || true
@@ -30,7 +27,7 @@ seed: ## Carga los seeds (recursos + emergencias demo)
 	$(COMPOSE) run --rm --entrypoint bash migrate /database/apply.sh seeds
 
 psql: ## Abre una sesion psql contra la base local
-	$(COMPOSE) exec postgres psql -U $${POSTGRES_USER:-emergency} -d $${POSTGRES_DB:-emergency}
+	$(COMPOSE) exec postgres psql -U emergency -d emergency
 
 test: ## Corre los tests de todos los servicios
 	@for svc in intake dispatch geospatial notification; do \

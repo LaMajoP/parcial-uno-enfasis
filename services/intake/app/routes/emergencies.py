@@ -26,6 +26,7 @@ from ..schemas.emergency import (
 )
 from ..schemas.enums import NotificationEvent
 from ..services.state_machine import assert_transition
+from ..services.feature_flags import get_feature_flags
 from ..services.triage import calculate_priority
 
 logger = logging.getLogger(__name__)
@@ -94,8 +95,8 @@ async def create_emergency(
         },
     )
 
-    # En paralelo: dos timeouts de 3 s en serie sumarían 6 s de latencia.
-    await asyncio.gather(
+    flags = await get_feature_flags()
+    outbound_calls = [
         notification_client.notify(
             created.id,
             NotificationEvent.EMERGENCY_CREATED,
@@ -105,9 +106,20 @@ async def create_emergency(
                 "city": created.city.value,
                 "status": created.status.value,
             },
-        ),
-        dispatch_client.request_auto_dispatch(created.id),
-    )
+        )
+    ]
+
+    if flags.allows_auto_dispatch(created.city):
+        outbound_calls.append(dispatch_client.request_auto_dispatch(created.id))
+    else:
+        logger.warning(
+            "Auto-dispatch skipped by feature flag",
+            extra={"city": created.city.value},
+        )
+
+    # En paralelo: dos timeouts de 3 s en serie sumarían 6 s de latencia.
+    if outbound_calls:
+        await asyncio.gather(*outbound_calls)
 
     return success(created, status_code=201)
 

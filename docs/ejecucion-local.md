@@ -28,13 +28,19 @@ dentro de contenedores.
 
 ```bash
 cd "/Users/carlosdm/Desktop/Parcial Software"
-cp .env.example .env     # solo la primera vez
 make up
 ```
 
 `make up` construye las imágenes, levanta Postgres, espera a que esté sano,
 aplica las migraciones, carga los datos de demostración y arranca los cuatro
 microservicios, el gateway y el frontend.
+
+No se requiere ni se crea un archivo `.env`: la base de datos de Docker local
+usa autenticación `trust` sin contraseña. Esa configuración es exclusiva de
+desarrollo; producción obtiene su conexión desde AWS Secrets Manager. Si ya
+tenías el volumen `pgdata` creado con la configuración anterior, Docker conserva
+su autenticación original. Para reinicializar **solo los datos locales de
+demostración** ejecuta `docker compose down -v` y luego `make up`.
 
 **La primera vez tarda entre 5 y 10 minutos** porque descarga y construye seis
 imágenes. Las siguientes son cuestión de segundos.
@@ -242,8 +248,7 @@ Otro programa ocupa uno de los puertos. Para ver cuál:
 lsof -i :3000    # o :8080, :5432
 ```
 
-Cierra ese programa, o cambia el puerto en `.env` (`POSTGRES_PORT`) o en
-`docker-compose.yml`.
+Cierra ese programa o cambia el puerto directamente en `docker-compose.yml`.
 
 ### El navegador muestra una página en blanco
 

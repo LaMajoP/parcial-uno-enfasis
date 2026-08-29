@@ -22,18 +22,25 @@ Parameters:
     Description: Production Vercel frontend origin
     # falta poner la url de vercel en produccion, por ahora es la de desarrollo
 
-  EnableCanary:
+  DatabaseSecretArn:
     Type: String
-    Default: "false"
-    AllowedValues:
-      - "true"
-      - "false"
-    Description: Enable gradual Canary deployments
+    Description: ARN of the pre-created Secrets Manager secret emergency-platform/prod/database
 
-Conditions:
+  BudgetAlertEmail:
+    Type: String
+    Description: Email address that receives AWS Budget alerts (subscription confirmation required)
 
-  CanaryEnabled:
-    !Equals [!Ref EnableCanary, "true"]
+  BudgetLimitUsd:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    Description: Maximum monthly AWS cost in USD
+
+  WafRateLimit:
+    Type: Number
+    Default: 200
+    MinValue: 100
+    Description: Maximum requests per five minutes for each source IP
 
 Globals:
 
@@ -43,21 +50,150 @@ Globals:
     Architectures:
       - x86_64
     Tracing: Active
-    Environment:
-      Variables:
-        DATABASE_URL_PARAMETER: /emergency-platform/prod/database-url
-
 Resources:
+
+  # La configuración no sensible se recupera en cada cold start desde SSM;
+  # ninguna Lambda recibe valores de negocio por variables de entorno.
+  IntakeRuntimeConfig:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /emergency-platform/prod/services/intake/runtime
+      Type: String
+      Tier: Standard
+      Value: >-
+        {"service_transport":"lambda","dispatch_function_name":"emergency-dispatch-prod:prod","notification_function_name":"emergency-notification-prod:prod","http_timeout_seconds":3,"log_level":"INFO"}
+
+  DispatchRuntimeConfig:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /emergency-platform/prod/services/dispatch/runtime
+      Type: String
+      Tier: Standard
+      Value: >-
+        {"service_transport":"lambda","intake_function_name":"emergency-intake-prod:prod","notification_function_name":"emergency-notification-prod:prod","http_timeout_seconds":3,"log_level":"INFO"}
+
+  GeospatialRuntimeConfig:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /emergency-platform/prod/services/geospatial/runtime
+      Type: String
+      Tier: Standard
+      Value: >-
+        {"http_timeout_seconds":3,"log_level":"INFO"}
+
+  NotificationRuntimeConfig:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /emergency-platform/prod/services/notification/runtime
+      Type: String
+      Tier: Standard
+      Value: >-
+        {"http_timeout_seconds":3,"log_level":"INFO"}
+
+  FeatureFlagsApplication:
+    Type: AWS::AppConfig::Application
+    Properties:
+      Name: emergency-platform
+      Description: Runtime feature flags for the emergency platform
+
+  AppConfigAlarmRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: appconfig.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadDeploymentAlarms
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:DescribeAlarms
+                Resource: "*"
+
+  FeatureFlagsEnvironment:
+    Type: AWS::AppConfig::Environment
+    Properties:
+      ApplicationId: !Ref FeatureFlagsApplication
+      Name: prod
+      Description: Production flags with automatic configuration rollback
+      Monitors:
+        - AlarmArn: !GetAtt IntakeErrorsAlarm.Arn
+          AlarmRoleArn: !GetAtt AppConfigAlarmRole.Arn
+
+  IntakeFeatureFlags:
+    Type: AWS::AppConfig::ConfigurationProfile
+    Properties:
+      ApplicationId: !Ref FeatureFlagsApplication
+      Name: intake-feature-flags
+      Description: Kill Switch and city rollout for Intake auto-dispatch
+      LocationUri: hosted
+      Type: AWS.AppConfig.FeatureFlags
+
+  FeatureFlagsDeploymentStrategy:
+    Type: AWS::AppConfig::DeploymentStrategy
+    Properties:
+      Name: emergency-flags-immediate-with-bake
+      Description: Applies an operational flag immediately and monitors it for rollback
+      DeploymentDurationInMinutes: 0
+      FinalBakeTimeInMinutes: 5
+      GrowthFactor: 100
+      GrowthType: LINEAR
+      ReplicateTo: NONE
+
+  IntakeFeatureFlagsInitialVersion:
+    Type: AWS::AppConfig::HostedConfigurationVersion
+    Properties:
+      ApplicationId: !Ref FeatureFlagsApplication
+      ConfigurationProfileId: !Ref IntakeFeatureFlags
+      ContentType: application/json
+      VersionLabel: initial-v1
+      Content: |
+        {
+          "version": "1",
+          "flags": {
+            "auto_dispatch_enabled": {
+              "name": "Auto-dispatch kill switch",
+              "description": "Globally enables automatic resource assignment after an emergency is persisted.",
+              "attributes": {
+                "enabled_cities": {
+                  "constraints": {
+                    "type": "array",
+                    "elements": {
+                      "type": "string",
+                      "enum": ["CHOCO", "PEREIRA", "CALI", "MANIZALES"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "values": {
+            "auto_dispatch_enabled": {
+              "enabled": true,
+              "enabled_cities": ["PEREIRA", "MANIZALES"]
+            }
+          }
+        }
+
+  IntakeFeatureFlagsInitialDeployment:
+    Type: AWS::AppConfig::Deployment
+    Properties:
+      ApplicationId: !Ref FeatureFlagsApplication
+      EnvironmentId: !Ref FeatureFlagsEnvironment
+      ConfigurationProfileId: !Ref IntakeFeatureFlags
+      ConfigurationVersion: !Ref IntakeFeatureFlagsInitialVersion
+      DeploymentStrategyId: !Ref FeatureFlagsDeploymentStrategy
+      Description: Initial production flags; auto-dispatch starts only in Pereira and Manizales
 
   IntakeFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Environment:
-        Variables:
-          SERVICE_TRANSPORT: lambda #cambiar en el futuro
-          DISPATCH_FUNCTION_NAME: emergency-dispatch-prod:prod
-          NOTIFICATION_FUNCTION_NAME: emergency-notification-prod:prod
-
       Policies:
         - Version: "2012-10-17"
           Statement:
@@ -68,12 +204,23 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:emergency-dispatch-prod:prod"
                 - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:emergency-notification-prod:prod"
-            - Sid: ReadDatabaseParameter
+            - Sid: ReadRuntimeConfiguration
               Effect: Allow
               Action:
                 - ssm:GetParameter
               Resource:
-                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/database-url"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/services/intake/runtime"
+            - Sid: ReadDatabaseSecret
+              Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref DatabaseSecretArn
+            - Sid: ReadIntakeFeatureFlags
+              Effect: Allow
+              Action:
+                - appconfig:StartConfigurationSession
+                - appconfig:GetLatestConfiguration
+              Resource: !Sub "arn:${AWS::Partition}:appconfig:${AWS::Region}:${AWS::AccountId}:application/${FeatureFlagsApplication}/environment/${FeatureFlagsEnvironment}/configuration/${IntakeFeatureFlags}"
 
       Events:
         CreateEmergency:
@@ -82,6 +229,11 @@ Resources:
             RestApiId: !Ref EmergencyApi
             Path: /v1/emergencies
             Method: POST
+            RequestModel:
+              Model: EmergencyCreateModel
+              Required: true
+              ValidateBody: true
+              ValidateParameters: false
 
         GetEmergency:
           Type: Api
@@ -101,23 +253,10 @@ Resources:
       PackageType: Image
       ImageUri: !Ref IntakeImageUri
       AutoPublishAlias: prod
-      DeploymentPreference:
-        Enabled: !If [CanaryEnabled, true, false]
-        Type: Canary10Percent5Minutes
-        Alarms:
-          - !Ref IntakeErrorsAlarm
-          - !Ref Api5xxAlarm
-          - !Ref ApiLatencyAlarm
 
   DispatchFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Environment:
-        Variables:
-          SERVICE_TRANSPORT: lambda
-          INTAKE_FUNCTION_NAME: emergency-intake-prod:prod
-          NOTIFICATION_FUNCTION_NAME: emergency-notification-prod:prod
-
       Policies:
         - Version: "2012-10-17"
           Statement:
@@ -128,12 +267,17 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:emergency-intake-prod:prod"
                 - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:emergency-notification-prod:prod"
-            - Sid: ReadDatabaseParameter
+            - Sid: ReadRuntimeConfiguration
               Effect: Allow
               Action:
                 - ssm:GetParameter
               Resource:
-                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/database-url"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/services/dispatch/runtime"
+            - Sid: ReadDatabaseSecret
+              Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref DatabaseSecretArn
 
       Events:
         CreateDispatch:
@@ -175,13 +319,6 @@ Resources:
       PackageType: Image
       ImageUri: !Ref DispatchImageUri
       AutoPublishAlias: prod
-      DeploymentPreference:
-        Enabled: !If [CanaryEnabled, true, false]
-        Type: Canary10Percent5Minutes
-        Alarms:
-          - !Ref DispatchErrorsAlarm
-          - !Ref Api5xxAlarm
-          - !Ref ApiLatencyAlarm
 
   GeospatialFunction:
     Type: AWS::Serverless::Function
@@ -189,12 +326,17 @@ Resources:
       Policies:
         - Version: "2012-10-17"
           Statement:
-            - Sid: ReadDatabaseParameter
+            - Sid: ReadRuntimeConfiguration
               Effect: Allow
               Action:
                 - ssm:GetParameter
               Resource:
-                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/database-url"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/services/geospatial/runtime"
+            - Sid: ReadDatabaseSecret
+              Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref DatabaseSecretArn
 
       Events:
         ZoneEmergencies:
@@ -215,13 +357,6 @@ Resources:
       PackageType: Image
       ImageUri: !Ref GeospatialImageUri
       AutoPublishAlias: prod
-      DeploymentPreference:
-        Enabled: !If [CanaryEnabled, true, false]
-        Type: Canary10Percent5Minutes
-        Alarms:
-          - !Ref GeospatialErrorsAlarm
-          - !Ref Api5xxAlarm
-          - !Ref ApiLatencyAlarm
 
   NotificationFunction:
     Type: AWS::Serverless::Function
@@ -229,12 +364,17 @@ Resources:
       Policies:
         - Version: "2012-10-17"
           Statement:
-            - Sid: ReadDatabaseParameter
+            - Sid: ReadRuntimeConfiguration
               Effect: Allow
               Action:
                 - ssm:GetParameter
               Resource:
-                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/database-url"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/emergency-platform/prod/services/notification/runtime"
+            - Sid: ReadDatabaseSecret
+              Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref DatabaseSecretArn
 
       Events:
         CreateNotification:
@@ -255,14 +395,6 @@ Resources:
       PackageType: Image
       ImageUri: !Ref NotificationImageUri
       AutoPublishAlias: prod
-      DeploymentPreference:
-        Enabled: !If [CanaryEnabled, true, false]
-        Type: Canary10Percent5Minutes
-        Alarms:
-          - !Ref NotificationErrorsAlarm
-          - !Ref Api5xxAlarm
-          - !Ref ApiLatencyAlarm
-      Architectures:
 
   Api5xxAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -309,11 +441,76 @@ Resources:
       StageName: prod
       EndpointConfiguration: REGIONAL
       TracingEnabled: true
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingBurstLimit: 50
+          ThrottlingRateLimit: 25
       Cors:
         AllowMethods: "'GET,POST,PATCH,OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization,X-Request-Id'"
         AllowOrigin: !Sub "'${AllowedOrigin}'"
-        
+      Models:
+        EmergencyCreateModel:
+          type: object
+          required:
+            - type
+            - city
+            - location
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [RESCUE, SHELTER, SUPPLIES, STRUCTURAL_DAMAGE]
+            city:
+              type: string
+              enum: [CHOCO, PEREIRA, CALI, MANIZALES]
+            location:
+              type: object
+              required: [latitude, longitude]
+              additionalProperties: false
+              properties:
+                latitude:
+                  type: number
+                  minimum: -4.5
+                  maximum: 13
+                longitude:
+                  type: number
+                  minimum: -82
+                  maximum: -66
+            details:
+              type: object
+
+  EmergencyApiWebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: emergency-platform-api-rate-limit-prod
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: emergency-platform-api-rate-limit-prod
+        SampledRequestsEnabled: true
+      Rules:
+        - Name: RateLimitPerIp
+          Priority: 0
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              AggregateKeyType: IP
+              Limit: !Ref WafRateLimit
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: rate-limit-per-ip
+            SampledRequestsEnabled: true
+
+  EmergencyApiWebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}::/restapis/${EmergencyApi}/stages/prod"
+      WebACLArn: !GetAtt EmergencyApiWebAcl.Arn
   IntakeErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -382,10 +579,52 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching    
 
-  
+  MonthlyCostBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: emergency-platform-monthly-prod
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref BudgetLimitUsd
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 50
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetAlertEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 85
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetAlertEmail
 
 Outputs:
 
   ApiUrl:
     Description: Production API Gateway URL
     Value: !Sub "https://${EmergencyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
+
+  FeatureFlagsApplicationId:
+    Description: AWS AppConfig application used by Intake
+    Value: !Ref FeatureFlagsApplication
+
+  FeatureFlagsEnvironmentId:
+    Description: AWS AppConfig production environment
+    Value: !Ref FeatureFlagsEnvironment
+
+  IntakeFeatureFlagsProfileId:
+    Description: AWS AppConfig profile that contains the Kill Switch
+    Value: !Ref IntakeFeatureFlags
+
+  FeatureFlagsDeploymentStrategyId:
+    Description: Deployment strategy for runtime configuration changes
+    Value: !Ref FeatureFlagsDeploymentStrategy

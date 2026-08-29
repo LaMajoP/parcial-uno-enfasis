@@ -1,7 +1,6 @@
 # Entorno — nunca commitear credenciales ni llaves de Supabase
 .env
-.env.local
-.env.*.local
+.env.*
 
 # Python
 __pycache__/
@@ -28,3 +27,27 @@ dist/
 # Claude
 CLAUDE.md
 .env.example
+
+  # AWS / SAM local
+  .aws-sam/
+  samconfig.toml
+
+  # Cobertura y pruebas
+  .coverage
+  coverage.xml
+  htmlcov/
+
+  # Vercel local
+  .vercel/
+
+  # Logs y archivos sensibles
+  *.log
+  *.pem
+  *.key
+  *.p12
+  *.pfx
+
+  # Bases de datos locales accidentales
+  *.sqlite
+  *.sqlite3
+  

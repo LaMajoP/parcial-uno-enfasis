@@ -70,7 +70,6 @@ Nada más: no hace falta Python ni Node en la máquina para levantar la platafor
 ## Cómo levantar
 
 ```bash
-cp .env.example .env
 make up
 ```
 
@@ -152,20 +151,21 @@ cluster debe dar **8**.
 
 ---
 
-## Variables de entorno
+## Configuración y secretos
 
-Todas viven en `.env` (git-ignored). `.env.example` tiene los valores de local y
-placeholders para Supabase.
+El entorno local es autocontenido: Docker Compose usa una base de demostración y
+no necesita `.env`. En producción no se usan archivos `.env` ni secretos en
+variables de entorno:
 
-| Variable | Para qué |
+| Dato | Ubicación de producción |
 |---|---|
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT` | Postgres local |
-| `DATABASE_URL` | Conexión de los servicios. **Única variable que cambia entre local y Supabase** |
-| `INTAKE_URL` / `DISPATCH_URL` / `GEOSPATIAL_URL` / `NOTIFICATION_URL` | Llamadas entre servicios |
-| `HTTP_TIMEOUT_SECONDS` | Timeout de las llamadas salientes (3 s) |
-| `VITE_API_BASE_URL` | Base del frontend — siempre el gateway |
-| `SUPABASE_*` / `VITE_SUPABASE_*` | Fase 6. Nunca se commitean las llaves reales |
-| `LOG_LEVEL` | Nivel de log de los servicios |
+| URL y credenciales de Supabase/PostgreSQL | AWS Secrets Manager |
+| Nombres de servicios, timeouts y log level | AWS Parameter Store |
+| Kill Switch y rollout por ciudad | AWS AppConfig |
+| URL y anon key de Supabase para el navegador | Variables públicas del panel de Vercel |
+
+El procedimiento reproducible, incluidos Feature Flags, circuit breaker, AWS
+Budgets y CI/CD, está en [`docs/despliegue-produccion.md`](docs/despliegue-produccion.md).
 
 ---
 
@@ -178,7 +178,7 @@ docker compose run --rm --entrypoint pytest intake -q tests/test_triage.py      
 docker compose run --rm --entrypoint pytest intake -q tests/test_triage.py::test_rescue_drops_to_p2_without_any_critical_factor   # un test
 ```
 
-**209 tests**: Intake 108, Dispatch 62, Geospatial 23, Notification 16.
+**216 tests**: Intake 115, Dispatch 62, Geospatial 23, Notification 16.
 
 Hay un `timeout = 60` en cada `pytest.ini`: un test que se cuelgue debe fallar
 rápido en vez de bloquear la suite entera.
@@ -256,9 +256,7 @@ almacenaría el stream en búfer y los eventos llegarían a golpes o no llegarí
 
 ---
 
-## Cambiar a Supabase
-
-El código no distingue entre entornos: cambia **una sola variable**.
+## Cambiar a Supabase en producción
 
 1. Crear el proyecto en supabase.com, región `us-east-1`.
 2. Habilitar PostGIS en el esquema correcto:
@@ -268,17 +266,13 @@ El código no distingue entre entornos: cambia **una sola variable**.
 3. Aplicar `database/migrations/*` en orden y luego `database/seeds/*`, con el SQL
    Editor o `supabase link && supabase db push`. Corren sin cambios respecto a
    local: por eso son idempotentes.
-4. En `.env`, apuntar `DATABASE_URL` a la cadena de conexión de Supabase:
-   ```
-   DATABASE_URL=postgresql+asyncpg://postgres:<password>@db.<ref>.supabase.co:5432/postgres
-   ```
-5. Levantar sin el contenedor de Postgres local:
-   ```bash
-   docker compose up --build intake dispatch geospatial notification gateway frontend
-   ```
+4. Guardar la cadena de conexión exclusivamente como `database_url` en el secreto
+   de AWS Secrets Manager `emergency-platform/prod/database`.
+5. Desplegar las imágenes Lambda y la infraestructura con el pipeline de backend.
 
 Las políticas RLS (`database/rls/`) y la configuración de Realtime se aplican en la
-fase 6. Las llaves de Supabase van en `.env`, **nunca** en el repositorio.
+fase 6. Las llaves administrativas de Supabase nunca salen de Secrets Manager ni
+del backend.
 
 ---
 

@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Federacion OIDC de GitHub Actions para el unico repositorio autorizado a
+  desplegar emergency-platform.
+
+Resources:
+  GitHubActionsOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      # Huella publicada para la cadena de certificados de GitHub Actions.
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  GitHubActionsDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: emergency-platform-github-deploy
+      Description: CI/CD deployment role for LaMajoP/parcial-uno-enfasis only
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: OnlyThisRepositoryProductionEnvironment
+            Effect: Allow
+            Principal:
+              Federated: !GetAtt GitHubActionsOidcProvider.Arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # El repo se creó después de 2026-07-15: GitHub emite el
+                # subject inmutable owner@id/repository@id para este entorno.
+                token.actions.githubusercontent.com:sub: >-
+                  repo:LaMajoP@181248298/parcial-uno-enfasis@1342927171:environment:production
+      Policies:
+        - PolicyName: EmergencyPlatformContinuousDeployment
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ManageOnlyPlatformCloudFormationStacks
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:ListStackResources
+                Resource:
+                  - !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/emergency-platform-*/*
+                  - !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/emergency-platform-bootstrap/*
+              - Sid: ValidateTemplatesBeforeDeployment
+                Effect: Allow
+                Action: cloudformation:ValidateTemplate
+                Resource: "*"
+              - Sid: PushOnlyPlatformImagesToEcr
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeImages
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/emergencias/*
+              - Sid: ReadPlatformEcrRepositoryMetadata
+                Effect: Allow
+                Action: ecr:DescribeRepositories
+                Resource: "*"
+              - Sid: ObtainEcrLoginToken
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: ProvisionOnlyServicesUsedByThisPlatform
+                Effect: Allow
+                Action:
+                  - apigateway:*
+                  - appconfig:*
+                  - budgets:*
+                  - cloudwatch:*
+                  - ec2:DescribeVpcs
+                  - iam:GetRole
+                  - lambda:*
+                  - logs:*
+                  - ssm:*
+                  - wafv2:*
+                Resource: "*"
+              - Sid: CreateOnlyPlatformExecutionRoles
+                Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:DeleteRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:PassRole
+                  - iam:PutRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/emergency-platform-*
+              - Sid: CreateOnlyTheWafServiceLinkedRole
+                Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/wafv2.amazonaws.com/AWSServiceRoleForWAFV2
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName: wafv2.amazonaws.com
+
+Outputs:
+  GitHubActionsDeployRoleArn:
+    Description: Configure this exact value as the GitHub Actions secret AWS_DEPLOY_ROLE_ARN.
+    Value: !GetAtt GitHubActionsDeployRole.Arn
+  OidcProviderArn:
+    Description: GitHub Actions OpenID Connect provider ARN.
+    Value: !GetAtt GitHubActionsOidcProvider.Arn

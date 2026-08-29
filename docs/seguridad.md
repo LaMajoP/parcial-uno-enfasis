@@ -126,7 +126,12 @@ cliente no podría ni evaluar si el cambio le corresponde.
 | `VITE_SUPABASE_ANON_KEY` | Variables de Vercel | — (es pública por diseño) |
 | `VITE_SUPABASE_URL` | Variables de Vercel | — (es pública por diseño) |
 
-`.env` está en `.gitignore`; `.env.example` solo contiene marcadores de posición.
+Las Lambdas no cargan archivos `.env` ni reciben secretos por variables de
+entorno. Durante el cold start leen el secreto de base de datos desde Secrets
+Manager y la configuración no sensible desde Parameter Store, con permisos IAM
+restringidos al secreto y parámetro del servicio correspondiente. El entorno local
+usa únicamente una base de demostración declarada en Docker Compose; no hay ningún
+archivo `.env` que deba versionarse.
 
 Cualquier variable con prefijo `VITE_` **se incrusta en el bundle JavaScript** en
 tiempo de build y acaba siendo pública. No es un descuido de configuración: es

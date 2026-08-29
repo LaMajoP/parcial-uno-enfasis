@@ -1,11 +1,17 @@
-"""Configuración del servicio, siempre desde variables de entorno."""
+"""Configuración local por entorno y de producción desde Parameter Store."""
+import json
+import os
 from functools import lru_cache
 
+import boto3
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+_RUNTIME_CONFIG_PARAMETER = "/emergency-platform/prod/services/geospatial/runtime"
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore")
 
     service_name: str = "geospatial"
     log_level: str = "INFO"
@@ -23,4 +29,14 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    if not os.getenv("AWS_EXECUTION_ENV"):
+        return Settings()
+
+    response = boto3.client("ssm").get_parameter(
+        Name=_RUNTIME_CONFIG_PARAMETER,
+        WithDecryption=True,
+    )
+    values = json.loads(response["Parameter"]["Value"])
+    if not isinstance(values, dict):
+        raise RuntimeError("Geospatial runtime configuration must be a JSON object")
+    return Settings(**values)

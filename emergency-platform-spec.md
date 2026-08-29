@@ -1,7 +1,9 @@
 # Emergency Platform — Especificación de construcción (Fase Local + Supabase)
 
-> **Para el agente:** este documento es la fuente de verdad del proyecto. Constrúyelo por fases, en orden.
-> **No implementes nada de AWS todavía** (Lambda, API Gateway, ECR, CodeDeploy, Canary, CI/CD, Secrets Manager, Budgets).
+> **Alcance histórico:** este documento describe las fases locales iniciales. La
+> fase de producción AWS posterior está implementada y documentada en
+> [`docs/despliegue-produccion.md`](docs/despliegue-produccion.md); esa guía tiene
+> prioridad para Lambda, API Gateway, secretos, AppConfig, CI/CD y Budgets.
 > Sí debes dejar el código *preparado* para AWS: cada servicio expone `handler = Mangum(app)` y su Dockerfile tiene un target `lambda`.
 > Si algo de este documento es ambiguo, **pregunta antes de inventar**. No cambies los contratos de API ni los nombres de enums.
 
@@ -52,7 +54,7 @@ Arquitectura de **4 microservicios independientes** + gateway + frontend. Nada d
 
 **Infra local:** Docker + Docker Compose.
 
-**Regla:** todo el proyecto debe levantarse con **`docker compose up --build`** y nada más. Cualquiera clona el repo, copia `.env.example` a `.env` y funciona.
+**Regla:** todo el proyecto debe levantarse con **`docker compose up --build`** y nada más. Cualquiera clona el repo y funciona sin archivos `.env`.
 
 ---
 
@@ -94,7 +96,6 @@ emergency-platform/
 ├── docs/
 │   └── diagrams/
 ├── docker-compose.yml
-├── .env.example
 ├── Makefile
 └── README.md
 ```
@@ -528,7 +529,7 @@ Detalles:
 Ejecuta en este orden y **detente al final de cada fase para que yo verifique**.
 
 ### Fase 1 — Base
-Repo, `docker-compose.yml`, Postgres+PostGIS, migraciones, seeds, `.env.example`, Makefile, README. **DoD:** `make up` levanta la base y `make seed` carga recursos; se puede consultar `SELECT * FROM dispatch.resources`.
+Repo, `docker-compose.yml`, Postgres+PostGIS, migraciones, seeds, Makefile, README. **DoD:** `make up` levanta la base y `make seed` carga recursos; se puede consultar `SELECT * FROM dispatch.resources`.
 
 ### Fase 2 — Intake
 Servicio completo: schemas, triage con tests, repositorio, rutas, Dockerfile, health. **DoD:** `POST /v1/emergencies` con los 4 tipos devuelve la prioridad correcta y persiste; `pytest` verde.
@@ -569,7 +570,7 @@ Escribe esta prueba también como script automatizado en `tests/e2e/test_flow.py
 
 **Crear el proyecto:**
 1. Proyecto nuevo en supabase.com, región `us-east-1` (misma que se usará luego en AWS).
-2. Guardar `SUPABASE_URL`, `anon key`, `service_role key` y la cadena de conexión de Postgres. **Nunca** commitear ninguna; van en `.env` (git-ignored) y en `.env.example` solo como placeholders.
+2. Guardar la cadena de conexión administrativa solo en AWS Secrets Manager. La URL y anon key públicas del frontend se configuran exclusivamente en el panel de Vercel. **Nunca** commitear ninguna.
 3. Habilitar PostGIS: `CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA extensions;`
 4. Aplicar `database/migrations/*` en orden (Supabase CLI: `supabase link` + `supabase db push`, o el SQL Editor). Deben correr sin cambios respecto a local — por eso son idempotentes.
 5. Aplicar `database/seeds/*`.
@@ -611,7 +612,7 @@ En el cliente JS hay que indicar el esquema explícitamente (`.schema('intake')`
 
 - `handler = Mangum(app)` al final de cada `main.py`.
 - Nada de estado en memoria entre requests; nada de tareas de fondo que sobrevivan a la respuesta.
-- Toda la configuración por variables de entorno leídas en `config.py` (después vendrán de Secrets Manager).
+- En desarrollo, Docker Compose inyecta valores no sensibles. En Lambda, la configuración se lee al inicializar desde Parameter Store y los secretos desde Secrets Manager.
 - Logs estructurados en JSON a stdout, con `request_id`, `service`, `level` (después los recoge CloudWatch).
 - Un `/health` por servicio que verifique conectividad a base de datos.
 - `infrastructure/` queda creado pero vacío, con un `.gitkeep`.
@@ -624,8 +625,8 @@ En el cliente JS hay que indicar el esquema explícitamente (`.schema('intake')`
 - No escribir desde un servicio en el esquema de otro (única excepción: lectura de `geospatial` sobre `intake.emergencies`).
 - No cambiar rutas, nombres de campos, enums ni el formato de respuesta.
 - No usar ORM sync ni `psycopg2` bloqueante.
-- No commitear `.env`, llaves de Supabase ni credenciales.
-- No implementar Lambda, API Gateway, ECR, CodeDeploy, Canary, CI/CD ni Budgets en esta etapa.
+- No commitear archivos `.env`, llaves de Supabase ni credenciales.
+- La fase de AWS se documenta y valida en `docs/despliegue-produccion.md`; usa AppConfig, no CodeDeploy/Canary.
 
 ---
 
@@ -634,6 +635,6 @@ En el cliente JS hay que indicar el esquema explícitamente (`.schema('intake')`
 1. Repositorio con frontend, 4 microservicios, Docker, base de datos y documentación.
 2. `docker compose up --build` funcionando desde cero.
 3. Proyecto de Supabase creado, con migraciones, RLS y Realtime aplicados.
-4. `README.md` con: requisitos, cómo levantar, variables de entorno, cómo correr los tests, cómo cambiar a Supabase, y la tabla de endpoints.
+4. `README.md` con: requisitos, cómo levantar, configuración segura, cómo correr los tests, cómo cambiar a Supabase, y la tabla de endpoints.
 5. `docs/decisiones.md` con los trade-offs (lectura cruzada de geospatial, fallo silencioso en llamadas entre servicios, service role vs RLS).
 6. Diagrama de arquitectura local en `docs/diagrams/` (Mermaid en el README también sirve).
