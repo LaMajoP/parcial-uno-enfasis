@@ -99,6 +99,27 @@ jobs:
             upper="$(echo "$service" | tr '[:lower:]' '[:upper:]')"
             echo "${upper}_IMAGE=${image}" >> "$GITHUB_ENV"
           done
+      # Si la PRIMERA creacion de un stack falla, CloudFormation lo deshace y lo
+      # deja en ROLLBACK_COMPLETE: un estado terminal que no admite update. Todo
+      # despliegue posterior muere con "can not be updated" y, lo peor, ese
+      # mensaje TAPA el error original. La unica salida es borrarlo y recrearlo.
+      - name: Delete stack if stuck in ROLLBACK_COMPLETE
+        run: |
+          status="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo NOT_FOUND)"
+
+          echo "Estado actual del stack: $status"
+
+          if [ "$status" = "ROLLBACK_COMPLETE" ]; then
+            echo "Estado terminal: se borra el stack para poder recrearlo desde cero."
+            aws cloudformation delete-stack \
+              --stack-name "$STACK_NAME" --region "$AWS_REGION"
+            aws cloudformation wait stack-delete-complete \
+              --stack-name "$STACK_NAME" --region "$AWS_REGION"
+            echo "Stack borrado."
+          fi
+
       - name: Deploy production stack without CodeDeploy
         run: |
           aws cloudformation deploy \
@@ -115,3 +136,17 @@ jobs:
               AllowedOrigin="${{ vars.VERCEL_ORIGIN }}" \
               DatabaseSecretArn="${{ secrets.DATABASE_SECRET_ARN }}" \
               BudgetAlertEmail="${{ secrets.BUDGET_ALERT_EMAIL }}"
+
+      # `aws cloudformation deploy` solo informa de que el despliegue fallo, no de
+      # QUE recurso lo tumbo: eso vive en los eventos del stack. Sin este paso hay
+      # que entrar a la consola de AWS cada vez, y con un stack que se auto-borra
+      # arriba, los eventos desaparecen. El primer CREATE_FAILED de la lista es la
+      # causa raiz; los demas son consecuencia del rollback.
+      - name: Show why the stack failed
+        if: failure()
+        run: |
+          echo "── Recursos que fallaron, del mas reciente al mas antiguo ──"
+          aws cloudformation describe-stack-events \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='UPDATE_FAILED'].{Recurso:LogicalResourceId,Tipo:ResourceType,Motivo:ResourceStatusReason}" \
+            --output table || echo "No se pudieron leer los eventos del stack."

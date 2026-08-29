@@ -52,6 +52,12 @@ Resources:
                   - cloudformation:ExecuteChangeSet
                   - cloudformation:GetTemplateSummary
                   - cloudformation:ListStackResources
+                  # Un stack cuya PRIMERA creacion falla queda en ROLLBACK_COMPLETE,
+                  # un estado que no admite update: la unica salida es borrarlo y
+                  # recrearlo. Sin este permiso el pipeline se queda bloqueado ahi
+                  # para siempre y hay que intervenir a mano desde la consola.
+                  # El Resource de abajo lo limita a los stacks de esta plataforma.
+                  - cloudformation:DeleteStack
                 Resource:
                   - !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/emergency-platform-*/*
                   - !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/emergency-platform-bootstrap/*

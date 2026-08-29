@@ -508,6 +508,13 @@ Resources:
 
   EmergencyApiWebAclAssociation:
     Type: AWS::WAFv2::WebACLAssociation
+    # El ResourceArn se construye con !Sub a partir del ID de la API, asi que
+    # CloudFormation solo deduce una dependencia con la RestApi — NO con el stage,
+    # que SAM crea como recurso aparte (`<ApiLogicalId><StageName>Stage`).
+    # Sin este DependsOn, la asociacion puede intentarse antes de que el stage
+    # exista y falla con "The referenced resource does not exist", tumbando la
+    # creacion entera del stack.
+    DependsOn: EmergencyApiprodStage
     Properties:
       ResourceArn: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}::/restapis/${EmergencyApi}/stages/prod"
       WebACLArn: !GetAtt EmergencyApiWebAcl.Arn
