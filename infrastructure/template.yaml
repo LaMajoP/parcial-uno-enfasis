@@ -54,14 +54,19 @@ Resources:
 
   # La configuración no sensible se recupera en cada cold start desde SSM;
   # ninguna Lambda recibe valores de negocio por variables de entorno.
+  #
+  # `allowed_origin` viaja aquí y no como variable de entorno para no romper esa
+  # regla. Lo necesita el CORSMiddleware de cada servicio: el bloque `Cors:` de
+  # EmergencyApi solo cubre el preflight OPTIONS (integración MOCK), mientras que
+  # las rutas reales usan integración proxy y sus cabeceras las pone la aplicación.
   IntakeRuntimeConfig:
     Type: AWS::SSM::Parameter
     Properties:
       Name: /emergency-platform/prod/services/intake/runtime
       Type: String
       Tier: Standard
-      Value: >-
-        {"service_transport":"lambda","dispatch_function_name":"emergency-dispatch-prod:prod","notification_function_name":"emergency-notification-prod:prod","http_timeout_seconds":3,"log_level":"INFO"}
+      Value: !Sub >-
+        {"service_transport":"lambda","dispatch_function_name":"emergency-dispatch-prod:prod","notification_function_name":"emergency-notification-prod:prod","http_timeout_seconds":3,"log_level":"INFO","allowed_origin":"${AllowedOrigin}"}
 
   DispatchRuntimeConfig:
     Type: AWS::SSM::Parameter
@@ -69,8 +74,8 @@ Resources:
       Name: /emergency-platform/prod/services/dispatch/runtime
       Type: String
       Tier: Standard
-      Value: >-
-        {"service_transport":"lambda","intake_function_name":"emergency-intake-prod:prod","notification_function_name":"emergency-notification-prod:prod","http_timeout_seconds":3,"log_level":"INFO"}
+      Value: !Sub >-
+        {"service_transport":"lambda","intake_function_name":"emergency-intake-prod:prod","notification_function_name":"emergency-notification-prod:prod","http_timeout_seconds":3,"log_level":"INFO","allowed_origin":"${AllowedOrigin}"}
 
   GeospatialRuntimeConfig:
     Type: AWS::SSM::Parameter
@@ -78,8 +83,8 @@ Resources:
       Name: /emergency-platform/prod/services/geospatial/runtime
       Type: String
       Tier: Standard
-      Value: >-
-        {"http_timeout_seconds":3,"log_level":"INFO"}
+      Value: !Sub >-
+        {"http_timeout_seconds":3,"log_level":"INFO","allowed_origin":"${AllowedOrigin}"}
 
   NotificationRuntimeConfig:
     Type: AWS::SSM::Parameter
@@ -87,8 +92,8 @@ Resources:
       Name: /emergency-platform/prod/services/notification/runtime
       Type: String
       Tier: Standard
-      Value: >-
-        {"http_timeout_seconds":3,"log_level":"INFO"}
+      Value: !Sub >-
+        {"http_timeout_seconds":3,"log_level":"INFO","allowed_origin":"${AllowedOrigin}"}
 
   FeatureFlagsApplication:
     Type: AWS::AppConfig::Application

@@ -19,6 +19,11 @@ class Settings(BaseSettings):
 
     http_timeout_seconds: float = 3.0
 
+    # Origen del navegador autorizado. None en local a proposito: alli las
+    # cabeceras CORS las pone el gateway Nginx y duplicarlas romperia la peticion.
+    # Ver el comentario extenso en services/intake/app/config.py.
+    allowed_origin: str | None = None
+
     default_zone_limit: int = 50
     default_hotspot_radius_meters: int = 5_000
     # Emergencias mínimas para que un grupo cuente como hotspot. Con 2, cualquier

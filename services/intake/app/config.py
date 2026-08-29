@@ -30,6 +30,21 @@ class Settings(BaseSettings):
 
     http_timeout_seconds: float = 3.0
 
+    # Origen del navegador autorizado a llamar a esta API.
+    #
+    # El bloque `Cors:` de la plantilla SAM solo cubre el preflight OPTIONS, que
+    # API Gateway resuelve con una integracion MOCK. Las rutas reales usan
+    # integracion proxy, asi que las cabeceras de esas respuestas las pone la
+    # aplicacion: sin el middleware de main.py el preflight pasa pero el navegador
+    # descarta la respuesta por falta de Access-Control-Allow-Origin.
+    #
+    # Por defecto None, y main.py NO monta el middleware cuando lo es. Esto no es
+    # un descuido: en local el gateway Nginx ya anade las cabeceras CORS, y si
+    # ademas las pusiera la aplicacion el navegador recibiria
+    # Access-Control-Allow-Origin duplicado y rechazaria la respuesta. Solo se
+    # rellena en produccion, desde el JSON de Parameter Store, donde no hay Nginx.
+    allowed_origin: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

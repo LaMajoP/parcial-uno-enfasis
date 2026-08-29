@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -36,6 +37,29 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(emergencies.router)
+
+# El bloque `Cors:` de infrastructure/template.yaml solo configura el preflight
+# OPTIONS, que API Gateway resuelve con una integracion MOCK sin llegar aqui. Las
+# rutas reales usan integracion proxy: sus cabeceras las pone esta aplicacion. Sin
+# esto el navegador recibe un 200 correcto y lo descarta igualmente por no
+# encontrar Access-Control-Allow-Origin.
+#
+# El condicional NO es defensivo, es necesario: en local quien anade las cabeceras
+# CORS es el gateway Nginx, y montarlo tambien aqui produciria un
+# Access-Control-Allow-Origin duplicado, que el navegador rechaza. `allowed_origin`
+# solo viene informado en produccion, que es justo donde no hay Nginx.
+#
+# Los valores replican los del template a proposito: si preflight y respuesta real
+# se contradicen, el navegador bloquea la peticion y el error no dice cual de los
+# dos esta mal.
+if settings.allowed_origin:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.allowed_origin],
+        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-Request-Id"],
+        expose_headers=["X-Request-Id"],
+    )
 
 
 @app.middleware("http")

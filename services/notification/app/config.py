@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # Notification no llama a nadie: solo registra y difunde.
     http_timeout_seconds: float = 3.0
 
+    # Origen del navegador autorizado. None en local a proposito: alli las
+    # cabeceras CORS las pone el gateway Nginx y duplicarlas romperia la peticion.
+    # Ver el comentario extenso en services/intake/app/config.py.
+    allowed_origin: str | None = None
+
     default_limit: int = 50
 
     # SSE: cada cuántos segundos se manda un comentario de keep-alive. Sin él, un
