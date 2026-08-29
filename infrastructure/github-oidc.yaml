@@ -59,6 +59,12 @@ Resources:
                 Effect: Allow
                 Action: cloudformation:ValidateTemplate
                 Resource: "*"
+              - Sid: AllowSamTransform
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                Resource:
+                  - arn:aws:cloudformation:us-west-2:aws:transform/Serverless-2016-10-31
               - Sid: PushOnlyPlatformImagesToEcr
                 Effect: Allow
                 Action:
