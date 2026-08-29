@@ -122,12 +122,3 @@ flowchart LR
 - La estrategia elegida es **Feature Flags + Circuit Breakers**; el detalle y el
   flujo de rollback de configuración están en
   [despliegue-produccion.md](despliegue-produccion.md#3-flags-operativas).
-
-## Estado documentado del requisito PWA
-
-El frontend actual es React/Vite desplegable en Vercel y ofrece actualización
-reactiva mediante Supabase Realtime. A la fecha del repositorio **no contiene
-manifest, service worker ni cola de reportes offline**. Por tanto, esta
-arquitectura no debe presentarse como PWA/offline-first hasta implementar esos
-artefactos. Es una brecha funcional, no una brecha que pueda corregirse solo con
-documentación; queda trazada en el [informe técnico](informe-tecnico.md#9-límites-y-pendientes-no-documentales).

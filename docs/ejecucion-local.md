@@ -339,6 +339,3 @@ El detalle está en el [README](../README.md) y las decisiones de diseño en
 - **El dashboard no hace polling cada 5 segundos.** Cuando Supabase está
   configurado recibe eventos de `intake.emergencies` y
   `notification.notifications`, e invalida sus consultas REST.
-- **PWA/offline-first pendiente.** No hay manifest, service worker ni cola local
-  de reportes. La limitación y evidencia requerida se registran en
-  [evidencias-entrega.md](evidencias-entrega.md#6-límite-funcional-que-la-documentación-no-puede-resolver).

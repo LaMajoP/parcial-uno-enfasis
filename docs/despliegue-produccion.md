@@ -114,23 +114,7 @@ de cualquier llamada saliente, por lo que nunca se pierde por un fallo secundari
 El Kill Switch es el control global; el circuito protege cada ejecución de Lambda
 contra una dependencia que ya está fallando.
 
-## 5. Evidencia para la demostración
-
-1. Mostrar AppConfig con el rollout inicial solo para Pereira y Manizales.
-2. Crear una emergencia en Pereira: CloudWatch registra el intento de
-   auto-despacho y la asignación.
-3. En una prueba controlada, provocar tres respuestas `5xx` o timeouts de
-   Dispatch. Mostrar en los logs el circuito `OPEN`; el POST debe seguir
-   respondiendo `201` porque la emergencia ya fue persistida.
-4. Apagar `auto_dispatch_enabled` en AppConfig y desplegar esa configuración.
-   Crear otra emergencia y mostrar que no hay invocación a Dispatch, sin nuevo
-   build o despliegue de Lambda.
-5. Reactivar la flag y, si se quiere demostrar rollback automático de
-   configuración, provocar la alarma de errores durante el periodo de bake.
-6. Capturar AWS Budgets con la alerta real al 50 %, la proyectada al 85 % y el
-   correo de confirmación de la suscripción.
-
-## 6. Verificación local antes de publicar
+## 5. Verificación local antes de publicar
 
 ```bash
 sam validate --template-file infrastructure/template.yaml --lint
@@ -142,7 +126,7 @@ El segundo comando no debe producir salida. `AutoPublishAlias: prod` sí debe
 permanecer cuatro veces: conserva los nombres de invocación privada ya usados por
 los microservicios, pero no habilita CodeDeploy.
 
-## 7. Despliegue del frontend en Vercel
+## 6. Despliegue del frontend en Vercel
 
 El frontend se despliega como proyecto independiente de Vercel desde la carpeta
 `frontend/`. En Vercel:
@@ -169,24 +153,7 @@ El frontend se despliega como proyecto independiente de Vercel desde la carpeta
    a las respuestas proxy de las Lambdas mediante Parameter Store.
 5. Desplegar desde la rama `main`. Abrir el formulario, el seguimiento y
    `/operator`; iniciar una sesión de operador para comprobar Auth y Realtime.
-6. Ejecutar la prueba CORS de [evidencias-entrega.md](evidencias-entrega.md#cors)
-   con la URL final de Vercel. Si la URL cambia, repetir los pasos 4 a 6.
 
 El vínculo a `main` produce el despliegue de frontend de Vercel y el pipeline
 `Backend CI/CD` despliega únicamente el backend. Son flujos independientes: una
 actualización visual no necesita publicar una imagen Lambda.
-
-## 8. Checklist de liberación
-
-- [ ] Los tests y `sam validate` terminaron exitosamente en GitHub Actions.
-- [ ] Las cuatro imágenes OCI de la revisión están en ECR y el stack quedó
-  `UPDATE_COMPLETE`.
-- [ ] La URL de Vercel coincide exactamente con `VERCEL_ORIGIN` y CORS responde
-  el mismo origen.
-- [ ] CloudWatch muestra en `OK` las alarmas de Intake, API 5xx y latencia.
-- [ ] AppConfig tiene una configuración `COMPLETE`; documentar las ciudades
-  habilitadas y probar el kill switch.
-- [ ] Supabase tiene migraciones, RLS, PostGIS y Realtime aplicados.
-- [ ] AWS Budget conserva USD 10, alerta ACTUAL 50 % y FORECASTED 85 %.
-- [ ] Se guardaron las capturas sin secretos según
-  [evidencias/README.md](evidencias/README.md).

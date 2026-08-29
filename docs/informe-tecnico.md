@@ -1,22 +1,16 @@
 # Informe técnico arquitectónico — Parcial 1
 
-## Ficha de entrega
+## Ficha del proyecto
 
-| Campo | Valor que debe figurar en la entrega final |
+| Campo | Valor |
 |---|---|
 | Curso | Patrones Arquitectónicos Avanzados |
 | Proyecto | Plataforma serverless resiliente para gestión de emergencias |
-| Equipo | **Completar con integrantes y códigos** |
-| Repositorio | **Completar con URL GitHub/GitLab** |
-| Frontend de producción | **Completar con URL de Vercel** |
 | API Gateway, stage `prod` | `https://0mdz1txwdc.execute-api.us-west-2.amazonaws.com/prod` |
 | Estrategia progresiva | Opción B: AWS AppConfig Feature Flags + Circuit Breakers |
 
-Este informe reúne la documentación exigida para la entrega. La evidencia de
-consolas y el inventario de capturas se mantienen en
-[evidencias-entrega.md](evidencias-entrega.md) y
-[evidencias/README.md](evidencias/README.md). Los campos marcados **Completar**
-son datos externos al repositorio y no deben inventarse.
+Este informe reúne la documentación técnica del proyecto. Las capturas de
+configuración se presentan en [evidencias-entrega.md](evidencias-entrega.md).
 
 ## 1. Problema y objetivo
 
@@ -92,7 +86,7 @@ las suscripciones. La explicación de amenazas y controles está en
 | Credencial de base de datos | Secrets Manager, leída durante cold start | `services/*/app/secrets.py` |
 | Acceso entre Lambdas | Roles IAM mínimos con `lambda:InvokeFunction` solo a destinos permitidos | `infrastructure/template.yaml` |
 | Datos de usuarios | Supabase RLS y roles en `app_metadata` | [seguridad.md](seguridad.md) y `database/rls/` |
-| Repositorio | `.gitignore`, revisión de historial y prohibición de `.env` | [evidencias-entrega.md](evidencias-entrega.md#4-integridad-del-repositorio) |
+| Repositorio | `.gitignore`, revisión de historial y prohibición de `.env` | [README](../README.md) y `.gitignore` |
 
 No se registran valores secretos en el informe, capturas ni logs. Las variables
 `VITE_*` de Vercel se limitan a URL del API, URL de Supabase y clave anónima; la
@@ -148,34 +142,20 @@ Las alarmas de producción declaradas son:
 | `emergency-api-latency-prod` | Latencia media mayor de 1500 ms | Detectar saturación o dependencia lenta. |
 
 El presupuesto `emergency-platform-monthly-prod` tiene límite de USD 10,
-notificación de gasto real al 50 % y previsión al 85 %. La configuración
-documentada y la captura requerida se describen en
-[registro-configuracion-produccion.md](registro-configuracion-produccion.md).
+notificación de gasto real al 50 % y previsión al 85 %. La configuración y sus
+capturas se describen en
+[registro-configuracion-produccion.md](registro-configuracion-produccion.md) y
+[evidencias-entrega.md](evidencias-entrega.md).
 
 ## 8. Trazabilidad de los entregables
 
-| Entregable solicitado | Documento / fuente en el repo | Evidencia externa por adjuntar |
-|---|---|---|
-| Repositorios sin secretos | README, `.gitignore`, [seguridad](seguridad.md) | URL del repositorio y chequeo de historial. |
-| Frontend Vercel y API `prod` | [registro de producción](registro-configuracion-produccion.md) | URL Vercel y capturas de deployment/pantallas. |
-| Informe y diagramas C4 | Este informe y [arquitectura-c4.md](arquitectura-c4.md) | Exportar a PDF o mostrar en repositorio. |
-| Secretos dinámicos e IAM | [seguridad.md](seguridad.md), plantilla SAM | Captura IAM/CloudTrail sin exponer valores. |
-| Feature Flags / Kill Switch | [despliegue-produccion.md](despliegue-produccion.md) | Capturas AppConfig y CloudWatch antes/después. |
-| RLS, PostGIS y Realtime | [seguridad.md](seguridad.md), scripts `database/rls/` | Resultado SQL y dos pestañas actualizándose. |
-| Budget y alertas | [registro de producción](registro-configuracion-produccion.md) | Captura Budget, alarmas y correo de suscripción. |
-| Video de máximo 5 minutos | [evidencias-entrega.md](evidencias-entrega.md#5-guion-breve-para-el-video-máximo-5-minutos) | Enlace de video entregable. |
-
-## 9. Límites y pendientes no documentales
-
-La documentación está preparada para la entrega, pero no puede sustituir un
-requisito funcional o una prueba que depende de plataformas externas:
-
-1. El frontend no cuenta aún con manifest, service worker y cola durable de
-   reportes; por lo tanto, el requisito estricto de PWA/offline-first sigue
-   pendiente de implementación. No debe presentarse como completado.
-2. Las capturas de Vercel, Supabase, AWS Budgets, CloudWatch, AppConfig y
-   GitHub Actions deben tomarse en las consolas reales y guardarse según
-   [evidencias/README.md](evidencias/README.md). Un documento no reemplaza
-   esas pruebas visuales.
-3. Antes de enviar, deben completarse la identidad del equipo, URL del
-   repositorio, URL de Vercel y enlace del video de la ficha inicial.
+| Entregable | Documento / fuente en el repo |
+|---|---|
+| Repositorios sin secretos | README, `.gitignore`, [seguridad](seguridad.md) |
+| Frontend Vercel y API `prod` | [registro de producción](registro-configuracion-produccion.md) |
+| Informe y diagramas C4 | Este informe y [arquitectura-c4.md](arquitectura-c4.md) |
+| Secretos dinámicos e IAM | [seguridad.md](seguridad.md), plantilla SAM y [evidencias](evidencias-entrega.md#secretos) |
+| Feature Flags / Kill Switch | [despliegue-produccion.md](despliegue-produccion.md) y [evidencias](evidencias-entrega.md#configuración-dinámica) |
+| RLS, PostGIS y Realtime | [seguridad.md](seguridad.md), scripts `database/rls/` |
+| Budget y alertas | [registro de producción](registro-configuracion-produccion.md) y [evidencias](evidencias-entrega.md#presupuesto-de-aws) |
+| Video demostrativo | [Evidencias de entrega](evidencias-entrega.md#video-demostrativo) |
