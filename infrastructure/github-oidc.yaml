@@ -80,6 +80,12 @@ Resources:
                 Effect: Allow
                 Action: ecr:DescribeRepositories
                 Resource: "*"
+              - Sid: ManageLambdaImageRetrievalPolicyOnly
+                Effect: Allow
+                Action:
+                  - ecr:GetRepositoryPolicy
+                  - ecr:SetRepositoryPolicy
+                Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/emergencias/*
               - Sid: ObtainEcrLoginToken
                 Effect: Allow
                 Action: ecr:GetAuthorizationToken
