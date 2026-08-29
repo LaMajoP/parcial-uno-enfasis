@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Link, NavLink, Route, Routes } from 'react-router-dom'
+import { OfflineBanner } from './components/OfflineBanner'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AuthProvider, useAuth } from './lib/auth'
 import { CitizenForm } from './pages/CitizenForm'
@@ -89,6 +90,9 @@ export function App() {
         <AuthProvider>
           <div className="min-h-screen bg-slate-50">
             <Nav />
+            {/* Va fuera de <main> y pegado a la navegación: el estado de
+                conexión afecta a toda la aplicación, no a una ruta concreta. */}
+            <OfflineBanner />
 
             <main className="mx-auto max-w-6xl">
               <Routes>

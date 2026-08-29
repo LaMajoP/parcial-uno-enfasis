@@ -8,6 +8,7 @@ import { LocationPicker } from '../components/LocationPicker'
 import { PriorityBadge, StatusBadge } from '../components/Badges'
 import { ErrorBox } from '../components/QueryState'
 import { createEmergency } from '../lib/api'
+import { enqueueReport } from '../lib/offline'
 import {
   CITIES,
   CITY_CENTERS,
@@ -22,6 +23,8 @@ export function CitizenForm() {
   const [city, setCity] = useState<City>('CALI')
   const [location, setLocation] = useState<Location | null>(null)
   const [details, setDetails] = useState<DetailsState>(initialDetails('RESCUE'))
+  /** El reporte quedó en la cola local por falta de red. */
+  const [queued, setQueued] = useState(false)
 
   const mutation = useMutation({ mutationFn: createEmergency })
 
@@ -30,6 +33,7 @@ export function CitizenForm() {
   const changeType = (next: EmergencyType) => {
     setType(next)
     setDetails(initialDetails(next))
+    setQueued(false)
     mutation.reset()
   }
 
@@ -38,13 +42,77 @@ export function CitizenForm() {
     setLocation(null) // la ubicación anterior pertenecía a otra ciudad
   }
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     const point = location ?? {
       latitude: CITY_CENTERS[city][0],
       longitude: CITY_CENTERS[city][1],
     }
-    mutation.mutate({ type, city, location: point, details })
+    const input = { type, city, location: point, details }
+
+    // Offline-first (§4.4): sin red el reporte NO se pierde, se guarda en el
+    // dispositivo y se reenvía solo al recuperar conexión.
+    //
+    // `navigator.onLine` es optimista: puede decir true con una red que no
+    // llega a ninguna parte. Por eso también se encola en el `catch` de un
+    // envío fallido, que es el caso frecuente en una red degradada.
+    if (!navigator.onLine) {
+      await enqueueReport(input)
+      window.dispatchEvent(new Event('queue-changed'))
+      setQueued(true)
+      return
+    }
+
+    try {
+      await mutation.mutateAsync(input)
+    } catch {
+      if (!navigator.onLine) {
+        await enqueueReport(input)
+        window.dispatchEvent(new Event('queue-changed'))
+        setQueued(true)
+        mutation.reset()
+      }
+      // Con red disponible el error es real (payload inválido, servicio caído):
+      // se deja que `mutation.isError` lo muestre en pantalla.
+    }
+  }
+
+  // Reporte encolado: NO se muestran ni ID ni prioridad. Los calcula el
+  // servicio Intake, y fabricarlos aquí le daría a la persona un identificador
+  // que no existe en el sistema — peor que no darle ninguno.
+  if (queued) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-6 p-6">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
+          <h2 className="text-lg font-semibold text-amber-900">
+            Reporte guardado en tu dispositivo
+          </h2>
+          <p className="mt-1 text-sm text-amber-800">
+            No hay conexión en este momento. Tu reporte quedó guardado y se
+            enviará automáticamente en cuanto vuelva la señal. No hace falta que
+            lo repitas.
+          </p>
+          <p className="mt-3 text-sm text-amber-800">
+            El identificador y la prioridad aparecerán cuando el reporte llegue
+            al centro de emergencias.
+          </p>
+
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => {
+                setQueued(false)
+                setLocation(null)
+                setDetails(initialDetails(type))
+              }}
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            >
+              Reportar otra
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (mutation.isSuccess) {

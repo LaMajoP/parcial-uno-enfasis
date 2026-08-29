@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Plataforma de Emergencias</title>
+
+    <!-- PWA (§4.4). El manifest hace la aplicación instalable; el service
+         worker, registrado desde main.tsx, es lo que la hace funcionar sin
+         conexión. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#dc2626" />
+    <meta
+      name="description"
+      content="Reporte y seguimiento de emergencias en Chocó, Pereira, Cali y Manizales."
+    />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <!-- iOS ignora el manifest para el icono de la pantalla de inicio. -->
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Emergencias" />
   </head>
   <body>
     <div id="root"></div>
