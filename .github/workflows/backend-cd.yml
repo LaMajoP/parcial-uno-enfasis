@@ -181,9 +181,8 @@ jobs:
           deployed_count="$(aws appconfig list-deployments \
             --application-id "$application_id" \
             --environment-id "$environment_id" \
-            --configuration-profile-id "$profile_id" \
             --region "$AWS_REGION" \
-            --query "length(Items[?State=='COMPLETE' && ConfigurationVersion=='${configuration_version}'])" \
+            --query "length(Items[?ConfigurationProfileId=='${profile_id}' && State=='COMPLETE' && ConfigurationVersion=='${configuration_version}'])" \
             --output text)"
           if [ "$deployed_count" -gt 0 ]; then
             echo "Initial AppConfig version $configuration_version is already deployed."
