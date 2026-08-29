@@ -44,21 +44,29 @@ SAFE_LOCAL_DEFAULTS = RuntimeFeatureFlags(
     auto_dispatch_cities=_ALL_CITIES,
 )
 
+# Si AppConfig no está disponible durante un cold start de Lambda, Intake sigue
+# aceptando y persistiendo la emergencia, pero no autoasigna recursos hasta que
+# haya recibido una configuración válida. Así el Kill Switch falla de forma segura.
+SAFE_LAMBDA_DEFAULTS = RuntimeFeatureFlags(
+    auto_dispatch_enabled=False,
+    auto_dispatch_cities=frozenset(),
+)
+
 
 class AppConfigFeatureFlagStore:
     """Cliente con caché por proceso y último valor conocido.
 
     AppConfig entrega un token nuevo en cada consulta. El lock evita que dos
     invocaciones concurrentes reutilicen el mismo token, que AWS solo admite una
-    vez. Ante un error se conserva el último snapshot; si aún no existe, se usa
-    el comportamiento local conocido para no rechazar reportes ciudadanos.
+    vez. Ante un error se conserva el último snapshot; en un cold start sin
+    snapshot se desactiva el auto-despacho, pero nunca se rechaza el reporte.
     """
 
     def __init__(self) -> None:
         self._client: Any | None = None
         self._token: str | None = None
         self._next_poll_at = 0.0
-        self._flags = SAFE_LOCAL_DEFAULTS
+        self._flags = SAFE_LAMBDA_DEFAULTS
         self._lock = Lock()
 
     def get(self) -> RuntimeFeatureFlags:

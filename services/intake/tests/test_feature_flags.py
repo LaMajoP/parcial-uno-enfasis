@@ -45,3 +45,17 @@ def test_local_runtime_uses_safe_defaults_without_calling_aws(monkeypatch):
     store = flags_module.AppConfigFeatureFlagStore()
 
     assert store.get() == flags_module.SAFE_LOCAL_DEFAULTS
+
+
+def test_lambda_cold_start_fails_closed_when_appconfig_is_unavailable(monkeypatch):
+    monkeypatch.setattr(flags_module, "_is_lambda_runtime", lambda: True)
+    store = flags_module.AppConfigFeatureFlagStore()
+    monkeypatch.setattr(
+        store,
+        "_refresh",
+        lambda: (_ for _ in ()).throw(RuntimeError("AppConfig unavailable")),
+    )
+
+    flags = store.get()
+
+    assert not any(flags.allows_auto_dispatch(city) for city in City)

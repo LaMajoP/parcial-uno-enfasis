@@ -19,8 +19,9 @@ En GitHub, configurar un entorno protegido llamado `production` y estos valores:
 | Secret | `BUDGET_ALERT_EMAIL` | Destino de las dos alertas de AWS Budgets |
 | Variable | `VERCEL_ORIGIN` | URL HTTPS exacta del frontend desplegado |
 
-El rol OIDC debe confiar solo en este repositorio y rama `main`; no se usan claves
-AWS de larga duración en GitHub.
+El rol OIDC confía solo en el entorno `production` de este repositorio. Configura
+las reglas de protección de ese entorno para permitir únicamente la rama `main`;
+no se usan claves AWS de larga duración en GitHub.
 
 ## 2. Qué crea la plantilla
 
@@ -57,7 +58,10 @@ negocio o secreto se define como variable de entorno en las Lambdas.
 
 El pipeline [backend-cd.yml](../.github/workflows/backend-cd.yml) ejecuta tests,
 valida SAM, compila las cuatro imágenes con target `lambda`, las publica en ECR y
-actualiza CloudFormation al hacer push a `main`.
+actualiza CloudFormation al hacer push a `main`. Cuando el stack queda estable,
+espera que la alarma de Intake llegue a `OK` y recién entonces despliega la versión
+inicial de AppConfig; así el rollback automático no confunde el estado inicial
+`INSUFFICIENT_DATA` con un error de la aplicación.
 
 Si el primer stack queda en `ROLLBACK_COMPLETE`, inspeccionar primero su estado y
 recursos. Solo entonces se puede eliminar **ese stack fallido** para volver a
@@ -84,7 +88,8 @@ El perfil `emergency-platform / prod / intake-feature-flags` tiene estas flags:
 
 Intake consulta AppConfig Data con el intervalo de polling indicado por AWS y
 mantiene el último snapshot correcto. Una indisponibilidad de AppConfig no puede
-rechazar un reporte ciudadano. Para apagar una dependencia con efecto inmediato,
+rechazar un reporte ciudadano: durante un cold start sin snapshot, auto-despacho
+queda desactivado de forma segura. Para apagar una dependencia con efecto inmediato,
 editar la flag en la consola de AppConfig, crear una nueva versión y desplegarla
 con la estrategia `emergency-flags-immediate-with-bake`; no ejecutar
 `docker build`, `sam deploy` ni cambiar una Lambda.

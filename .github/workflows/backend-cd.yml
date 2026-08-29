@@ -137,6 +137,95 @@ jobs:
               DatabaseSecretArn="${{ secrets.DATABASE_SECRET_ARN }}" \
               BudgetAlertEmail="${{ secrets.BUDGET_ALERT_EMAIL }}"
 
+      - name: Deploy initial AppConfig flags after monitor is ready
+        run: |
+          application_id="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='FeatureFlagsApplicationId'].OutputValue | [0]" \
+            --output text)"
+          environment_id="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='FeatureFlagsEnvironmentId'].OutputValue | [0]" \
+            --output text)"
+          profile_id="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='IntakeFeatureFlagsProfileId'].OutputValue | [0]" \
+            --output text)"
+          strategy_id="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='FeatureFlagsDeploymentStrategyId'].OutputValue | [0]" \
+            --output text)"
+          configuration_version="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='IntakeFeatureFlagsInitialVersion'].OutputValue | [0]" \
+            --output text)"
+
+          alarm_state=""
+          for attempt in $(seq 1 12); do
+            alarm_state="$(aws cloudwatch describe-alarms \
+              --alarm-names emergency-intake-errors-prod \
+              --region "$AWS_REGION" \
+              --query 'MetricAlarms[0].StateValue' --output text)"
+            if [ "$alarm_state" = "OK" ]; then
+              break
+            fi
+            echo "AppConfig monitor is $alarm_state; waiting for OK ($attempt/12)."
+            sleep 10
+          done
+
+          if [ "$alarm_state" != "OK" ]; then
+            echo "AppConfig monitor never reached OK; refusing to deploy flags."
+            exit 1
+          fi
+
+          deployed_count="$(aws appconfig list-deployments \
+            --application-id "$application_id" \
+            --environment-id "$environment_id" \
+            --configuration-profile-id "$profile_id" \
+            --region "$AWS_REGION" \
+            --query "length(Items[?State=='COMPLETE' && ConfigurationVersion=='${configuration_version}'])" \
+            --output text)"
+          if [ "$deployed_count" -gt 0 ]; then
+            echo "Initial AppConfig version $configuration_version is already deployed."
+            exit 0
+          fi
+
+          deployment_number="$(aws appconfig start-deployment \
+            --application-id "$application_id" \
+            --environment-id "$environment_id" \
+            --configuration-profile-id "$profile_id" \
+            --configuration-version "$configuration_version" \
+            --deployment-strategy-id "$strategy_id" \
+            --description "Initial flags deployed after CloudWatch monitor reached OK" \
+            --region "$AWS_REGION" \
+            --query DeploymentNumber --output text)"
+
+          for attempt in $(seq 1 28); do
+            deployment_state="$(aws appconfig get-deployment \
+              --application-id "$application_id" \
+              --environment-id "$environment_id" \
+              --deployment-number "$deployment_number" \
+              --region "$AWS_REGION" \
+              --query State --output text)"
+            case "$deployment_state" in
+              COMPLETE)
+                echo "Initial AppConfig flags deployed successfully."
+                exit 0
+                ;;
+              ROLLED_BACK|ROLLING_BACK)
+                echo "Initial AppConfig deployment rolled back; inspect the CloudWatch alarm."
+                exit 1
+                ;;
+              *)
+                echo "AppConfig deployment is $deployment_state ($attempt/28)."
+                sleep 15
+                ;;
+            esac
+          done
+
+          echo "Timed out waiting for initial AppConfig deployment."
+          exit 1
+
       # `aws cloudformation deploy` solo informa de que el despliegue fallo, no de
       # QUE recurso lo tumbo: eso vive en los eventos del stack. Sin este paso hay
       # que entrar a la consola de AWS cada vez, y con un stack que se auto-borra

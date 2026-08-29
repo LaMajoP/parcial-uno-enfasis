@@ -181,16 +181,6 @@ Resources:
           }
         }
 
-  IntakeFeatureFlagsInitialDeployment:
-    Type: AWS::AppConfig::Deployment
-    Properties:
-      ApplicationId: !Ref FeatureFlagsApplication
-      EnvironmentId: !Ref FeatureFlagsEnvironment
-      ConfigurationProfileId: !Ref IntakeFeatureFlags
-      ConfigurationVersion: !Ref IntakeFeatureFlagsInitialVersion
-      DeploymentStrategyId: !Ref FeatureFlagsDeploymentStrategy
-      Description: Initial production flags; auto-dispatch starts only in Pereira and Manizales
-
   IntakeFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -631,6 +621,10 @@ Outputs:
   IntakeFeatureFlagsProfileId:
     Description: AWS AppConfig profile that contains the Kill Switch
     Value: !Ref IntakeFeatureFlags
+
+  IntakeFeatureFlagsInitialVersion:
+    Description: Initial hosted flag version, deployed by CI after the monitor reaches OK
+    Value: !Ref IntakeFeatureFlagsInitialVersion
 
   FeatureFlagsDeploymentStrategyId:
     Description: Deployment strategy for runtime configuration changes
