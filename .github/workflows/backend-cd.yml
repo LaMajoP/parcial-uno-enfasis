@@ -72,14 +72,30 @@ jobs:
         run: |
           for service in intake dispatch geospatial notification; do
             repository="emergencias/${service}"
-            if [ "$service" = "geospatial" ]; then repository="emergencias/geo"; fi
+            if [ "$service" = "geospatial" ]; then
+              repository="emergencias/geo"
+            fi
+
             image="${ECR_REGISTRY}/${repository}:${GITHUB_SHA}"
-            docker build \
-              --platform linux/amd64 \
-              --provenance=false \
-              --target lambda \
-              -t "$image" "services/${service}"
-            docker push "$image"
+
+            if aws ecr describe-images \
+              --repository-name "$repository" \
+              --image-ids imageTag="$GITHUB_SHA" \
+              --region "$AWS_REGION" >/dev/null 2>&1; then
+
+              echo "Image already exists, reusing: $image"
+
+            else
+              docker build \
+                --platform linux/amd64 \
+                --provenance=false \
+                --target lambda \
+                -t "$image" \
+                "services/${service}"
+
+              docker push "$image"
+            fi
+
             upper="$(echo "$service" | tr '[:lower:]' '[:upper:]')"
             echo "${upper}_IMAGE=${image}" >> "$GITHUB_ENV"
           done
