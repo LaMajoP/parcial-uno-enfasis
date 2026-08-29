@@ -54,7 +54,7 @@ El proyecto se construye por fases. Estado actual:
 - [x] **Fase 3 — Dispatch:** `nearby` con PostGIS, asignación con bloqueo, auto-despacho
 - [x] **Fase 4 — Geospatial + Notification:** hotspots con clustering, SSE
 - [x] **Fase 5 — Gateway + Frontend:** Nginx, formulario ciudadano, dashboard operador
-- [ ] **Fase 6 — Supabase:** RLS y Realtime
+- [x] **Fase 6 — Supabase:** scripts de RLS, publicación Realtime y cliente React
 
 ---
 
@@ -166,6 +166,8 @@ variables de entorno:
 
 El procedimiento reproducible, incluidos Feature Flags, circuit breaker, AWS
 Budgets y CI/CD, está en [`docs/despliegue-produccion.md`](docs/despliegue-produccion.md).
+La guía de capturas, verificaciones y guion de demostración está en
+[`docs/evidencias-entrega.md`](docs/evidencias-entrega.md).
 
 ---
 
