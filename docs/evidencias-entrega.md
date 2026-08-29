@@ -2,7 +2,9 @@
 
 Este documento separa la evidencia ya comprobada de la que debe capturarse desde
 las consolas de GitHub, Vercel y Supabase. No incluir contraseñas, URLs de
-conexión ni llaves en las capturas.
+conexión ni llaves en las capturas. El índice, nombre sugerido y control de cada
+archivo externo están en [evidencias/README.md](evidencias/README.md); el
+informe que explica la arquitectura es [informe-tecnico.md](informe-tecnico.md).
 
 ## 1. Instantánea comprobada de producción
 
@@ -48,6 +50,8 @@ curl -i https://0mdz1txwdc.execute-api.us-west-2.amazonaws.com/prod/v1/dispatche
 | Feature Flags y circuit breaker | `services/intake/app/services/feature_flags.py`, `services/intake/app/clients/circuit_breaker.py` |
 | RLS, PostGIS y Realtime | `database/migrations/`, `database/rls/`, `frontend/src/lib/realtime.ts` |
 | Diagramas y decisiones | `docs/arquitectura-c4.md`, `docs/decisiones.md`, `docs/seguridad.md` |
+| Informe técnico y registro de configuración | `docs/informe-tecnico.md`, `docs/registro-configuracion-produccion.md` |
+| Inventario de capturas y video | `docs/evidencias/README.md` |
 | CI/CD | `.github/workflows/backend-cd.yml` |
 | Presupuesto y alarmas | `infrastructure/template.yaml`, sección `MonthlyCostBudget` |
 
@@ -169,6 +173,12 @@ antes de compartir el repositorio.
 
 ## 5. Guion breve para el video (máximo 5 minutos)
 
+El enunciado exige un video demostrativo, pero no obliga expresamente a que una
+persona aparezca en cámara ni a que hable. Una narración breve mientras se
+comparte pantalla es recomendable: permite explicar qué evidencia se observa sin
+pasar el límite de tiempo. No mostrar secretos, paneles con valores o correos
+personales.
+
 1. **0:00–0:30:** C4 de contexto y contenedores; explicar los cuatro servicios.
 2. **0:30–1:30:** frontend Vercel: crear y seguir una emergencia.
 3. **1:30–2:15:** dashboard operador, mapa y actualización Realtime.
@@ -176,9 +186,11 @@ antes de compartir el repositorio.
 5. **3:00–4:10:** AppConfig: segmentación por ciudad y kill switch sin redeploy.
 6. **4:10–5:00:** RLS/PostGIS, Budget, pipeline verde y cierre con las URLs de producción.
 
-## 6. Pendiente funcional de la rúbrica
+## 6. Límite funcional que la documentación no puede resolver
 
 El frontend actual es React/Vite y funciona en Vercel, pero todavía no incluye
 manifest, service worker ni cola de solicitudes offline. Para satisfacer de forma
 estricta el requisito de "offline-first / PWA ligero", hay que implementar esa
-capacidad antes de declarar la solución completamente terminada.
+capacidad antes de declarar la solución completamente terminada. Esta guía deja
+la brecha explícita para no fabricar evidencia de un requisito no implementado;
+no debe ocultarse en el video ni en el informe técnico.

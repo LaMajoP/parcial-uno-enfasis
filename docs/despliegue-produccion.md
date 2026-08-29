@@ -141,3 +141,52 @@ make test
 El segundo comando no debe producir salida. `AutoPublishAlias: prod` sí debe
 permanecer cuatro veces: conserva los nombres de invocación privada ya usados por
 los microservicios, pero no habilita CodeDeploy.
+
+## 7. Despliegue del frontend en Vercel
+
+El frontend se despliega como proyecto independiente de Vercel desde la carpeta
+`frontend/`. En Vercel:
+
+1. Importar el mismo repositorio y configurar **Root Directory** como
+   `frontend`.
+2. Usar el framework Vite; el comando de compilación es `npm run build` y el
+   directorio de salida es `dist`. Ambos valores ya están declarados en
+   `frontend/vercel.json`.
+3. En **Settings → Environment Variables**, crear solo en `Production`:
+
+   | Variable pública | Valor que se configura en el panel |
+   |---|---|
+   | `VITE_API_BASE_URL` | URL HTTPS del API Gateway con `/prod`, sin `/` final. |
+   | `VITE_SUPABASE_URL` | URL del proyecto Supabase. |
+   | `VITE_SUPABASE_ANON_KEY` | Clave anónima pública del proyecto Supabase. |
+
+   No agregar `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, ARNs de AWS ni
+   secretos de GitHub. Toda variable `VITE_*` se incorpora al bundle y se puede
+   leer desde el navegador.
+4. Copiar la URL HTTPS de Production exacta, sin `/` final, en la variable
+   `VERCEL_ORIGIN` del entorno protegido `production` de GitHub. El siguiente
+   pipeline de backend la aplica simultáneamente al preflight de API Gateway y
+   a las respuestas proxy de las Lambdas mediante Parameter Store.
+5. Desplegar desde la rama `main`. Abrir el formulario, el seguimiento y
+   `/operator`; iniciar una sesión de operador para comprobar Auth y Realtime.
+6. Ejecutar la prueba CORS de [evidencias-entrega.md](evidencias-entrega.md#cors)
+   con la URL final de Vercel. Si la URL cambia, repetir los pasos 4 a 6.
+
+El vínculo a `main` produce el despliegue de frontend de Vercel y el pipeline
+`Backend CI/CD` despliega únicamente el backend. Son flujos independientes: una
+actualización visual no necesita publicar una imagen Lambda.
+
+## 8. Checklist de liberación
+
+- [ ] Los tests y `sam validate` terminaron exitosamente en GitHub Actions.
+- [ ] Las cuatro imágenes OCI de la revisión están en ECR y el stack quedó
+  `UPDATE_COMPLETE`.
+- [ ] La URL de Vercel coincide exactamente con `VERCEL_ORIGIN` y CORS responde
+  el mismo origen.
+- [ ] CloudWatch muestra en `OK` las alarmas de Intake, API 5xx y latencia.
+- [ ] AppConfig tiene una configuración `COMPLETE`; documentar las ciudades
+  habilitadas y probar el kill switch.
+- [ ] Supabase tiene migraciones, RLS, PostGIS y Realtime aplicados.
+- [ ] AWS Budget conserva USD 10, alerta ACTUAL 50 % y FORECASTED 85 %.
+- [ ] Se guardaron las capturas sin secretos según
+  [evidencias/README.md](evidencias/README.md).

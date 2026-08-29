@@ -89,8 +89,12 @@ En el mapa de Cali verás:
   <br>🔴 P1 · 🟠 P2 · 🟡 P3 · 🔵 P4
 - **Cuadrados verdes** — los recursos (ambulancias, bomberos, rescate…).
 
-Debajo del mapa, la tabla de emergencias activas con filtros por ciudad,
-prioridad y estado. Se refresca sola cada 5 segundos.
+Debajo del mapa está la tabla de emergencias activas con filtros por ciudad,
+prioridad y estado. En producción, Supabase Realtime invalida las consultas al
+ocurrir un cambio y el tablero se actualiza sin polling. El contenedor local no
+incluye credenciales públicas de Supabase, por lo que muestra el estado de
+conexión Realtime como no disponible; las consultas REST locales siguen
+funcionando a través del gateway.
 
 ### 2. Crear una emergencia
 
@@ -149,7 +153,7 @@ make help          # lista todos los comandos
 | `make logs` | Sigue los logs de todos los servicios |
 | `make ps` | Estado de los contenedores |
 | `make psql` | Abre una consola SQL contra la base |
-| `make test` | Tests de los cuatro servicios (209 casos) |
+| `make test` | Tests de los cuatro servicios (216 casos) |
 | `make e2e` | Prueba de aceptación completa (reinicia la base antes) |
 | `make migrate` | Reaplica solo las migraciones |
 | `make seed` | Recarga los datos de demostración |
@@ -164,7 +168,7 @@ make help          # lista todos los comandos
 make test
 ```
 
-209 casos repartidos entre los cuatro servicios: reglas de clasificación,
+216 casos repartidos entre los cuatro servicios: reglas de clasificación,
 máquinas de estado, validación de payloads y formato de las respuestas. Tarda
 alrededor de un minuto.
 
@@ -324,10 +328,17 @@ El detalle está en el [README](../README.md) y las decisiones de diseño en
 
 ---
 
-## Lo que todavía no funciona
+## Diferencia intencional entre local y producción
 
-- **`/login` es un placeholder.** La autenticación se conecta a Supabase en la
-  fase 6. Por ahora las dos vistas son de acceso libre.
-- **El dashboard consulta cada 5 segundos** en lugar de recibir los cambios al
-  instante. El stream de eventos en vivo ya existe (`/v1/notifications/stream`) y
-  lo sustituirá cuando entre Supabase Realtime.
+- **Supabase Auth y Realtime no se configuran en local.** Docker Compose no
+  versiona URL ni clave anónima de un proyecto Supabase. Por eso `/login` y el
+  indicador Realtime requieren las tres variables públicas configuradas en
+  Vercel para producir una sesión o suscripción real. El código del frontend ya
+  integra Supabase Auth y Realtime; en producción los datos operativos siguen
+  pasando por REST mediante API Gateway.
+- **El dashboard no hace polling cada 5 segundos.** Cuando Supabase está
+  configurado recibe eventos de `intake.emergencies` y
+  `notification.notifications`, e invalida sus consultas REST.
+- **PWA/offline-first pendiente.** No hay manifest, service worker ni cola local
+  de reportes. La limitación y evidencia requerida se registran en
+  [evidencias-entrega.md](evidencias-entrega.md#6-límite-funcional-que-la-documentación-no-puede-resolver).

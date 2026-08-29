@@ -199,7 +199,8 @@ ocupada. Por eso `make e2e` hace `reset` antes.
 ### Frontend
 
 - `/` formulario del ciudadano · `/track/:id` seguimiento · `/operator` dashboard
-  · `/login` placeholder de la fase 6.
+  · `/login` con Supabase Auth cuando las variables públicas de Vercel están
+  configuradas.
 - Todo pasa por `src/lib/api.ts` con `VITE_API_BASE_URL`. Ninguna vista conoce los
   puertos de los servicios.
 - Dos endpoints nuevos hicieron falta para el dashboard, porque el spec no define
@@ -319,5 +320,12 @@ Los payloads de la API usan **camelCase**; las columnas de la base, **snake_case
 ## Documentación
 
 - [`docs/ejecucion-local.md`](docs/ejecucion-local.md) — **cómo levantar el proyecto, recorrido de demostración y resolución de problemas**
+- [`docs/informe-tecnico.md`](docs/informe-tecnico.md) — informe arquitectónico, trazabilidad de la rúbrica y límites conocidos
+- [`docs/arquitectura-c4.md`](docs/arquitectura-c4.md) — diagramas C4 de contexto, contenedores, componentes y despliegue
 - [`docs/decisiones.md`](docs/decisiones.md) — trade-offs y decisiones de arquitectura
+- [`docs/seguridad.md`](docs/seguridad.md) — modelo de amenazas, RLS y gestión de secretos
+- [`docs/despliegue-produccion.md`](docs/despliegue-produccion.md) — CI/CD, AWS AppConfig, kill switch y Circuit Breaker
+- [`docs/registro-configuracion-produccion.md`](docs/registro-configuracion-produccion.md) — reporte de configuración de AWS/Vercel y verificaciones seguras
+- [`docs/evidencias-entrega.md`](docs/evidencias-entrega.md) — guía de capturas, guion de video y controles de integridad
+- [`docs/evidencias/README.md`](docs/evidencias/README.md) — inventario de archivos de evidencia externos
 - [`emergency-platform-spec.md`](emergency-platform-spec.md) — especificación completa
